@@ -345,7 +345,10 @@ main() {
             # Set appropriate exit code
             if [[ "$result" == "BUILD_SKIP" ]]; then
                 exit 0
+            elif [[ "$result" == "BUILD_REQUIRED" ]]; then
+                exit 0
             else
+                # Unknown result or error
                 exit 1
             fi
             ;;
