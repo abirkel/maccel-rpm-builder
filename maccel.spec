@@ -1,5 +1,5 @@
 # maccel.spec - RPM spec file for maccel userspace tools
-# This spec file builds the maccel CLI tools and installs configuration files
+# This spec file builds the maccel CLI tools using native Fedora Rust toolchain
 
 %define maccel_driver_version %{?maccel_version}%{!?maccel_version:1.0.0}
 %define maccel_rpm_release %{?rpm_release}%{!?rpm_release:1}
@@ -15,12 +15,17 @@ URL:            https://github.com/Gnarus-G/maccel
 Source0:        https://github.com/Gnarus-G/maccel/archive/main.tar.gz#/maccel-%{version}.tar.gz
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root
 
+# Native Fedora Rust toolchain dependencies
 BuildRequires:  rust >= 1.70
 BuildRequires:  cargo
 BuildRequires:  gcc
+BuildRequires:  pkg-config
+BuildRequires:  systemd-rpm-macros
 
+# Runtime dependencies for proper Fedora integration
 Requires:       kmod-maccel = %{version}-%{release}
 Requires(pre):  shadow-utils
+Requires:       systemd-udev
 
 %description
 The maccel userspace tools provide a command-line interface and text-based UI
@@ -33,37 +38,44 @@ This package requires the kmod-maccel kernel module to function properly.
 %setup -q -n maccel-%{version}
 
 %build
-# Build the CLI using cargo workspace
+# Build the CLI using Fedora's native Rust toolchain and cargo workspace
+export CARGO_HOME=$(pwd)/.cargo
+export RUSTFLAGS="%{?build_rustflags}"
+
+# Configure cargo for Fedora environment and handle cc build dependency
+export CC=gcc
+export CXX=g++
+
+# Build the maccel CLI binary from the cargo workspace
 cargo build --bin maccel --release
 
 %install
-# Create installation directories
+# Create installation directories using Fedora filesystem layout
 install -d %{buildroot}%{_bindir}
-install -d %{buildroot}/etc/udev/rules.d
+install -d %{buildroot}%{_udevrulesdir}
 install -d %{buildroot}%{_sysconfdir}/maccel
 
-# Install the CLI binary
+# Install the CLI binary with proper Fedora permissions
 install -m 755 target/release/maccel %{buildroot}%{_bindir}/maccel
 
-# Install udev rules for device access
-install -m 644 udev_rules/99-maccel.rules %{buildroot}/etc/udev/rules.d/99-maccel.rules
+# Install udev rules using Fedora's udev system
+install -m 644 udev_rules/99-maccel.rules %{buildroot}%{_udevrulesdir}/99-maccel.rules
 
-# Create default configuration directory (empty for now)
+# Create default configuration directory for Fedora standards
 # Users can add their own configuration files here
 
 %files
 %{_bindir}/maccel
-/etc/udev/rules.d/99-maccel.rules
+%{_udevrulesdir}/99-maccel.rules
 %dir %{_sysconfdir}/maccel
 
 %pre
-# Create maccel group for device access
+# Create maccel group for device access using Fedora standards
 getent group maccel >/dev/null || groupadd -r maccel
 
 %post
-# Reload udev rules to apply device permissions
-/sbin/udevadm control --reload-rules || :
-/sbin/udevadm trigger || :
+# Reload udev rules using Fedora's udev system
+%udev_rules_update
 
 %postun
 # Clean up group on package removal (only if no other packages use it)
@@ -74,9 +86,8 @@ if [ $1 -eq 0 ]; then
     fi
 fi
 
-# Reload udev rules after removal
-/sbin/udevadm control --reload-rules || :
-/sbin/udevadm trigger || :
+# Reload udev rules after removal using Fedora's udev system
+%udev_rules_update
 
 %check
 # Basic validation that the binary was built correctly
@@ -89,4 +100,11 @@ test -f udev_rules/99-maccel.rules
 grep -q "maccel" udev_rules/99-maccel.rules
 
 %changelog
-# Changelog will be automatically generated during build
+* Tue Oct 29 2024 maccel-rpm-builder <noreply@github.com> - 1.0.0-1
+- Updated for native Fedora Rust compilation
+- Use Fedora's native Rust toolchain and cargo packages
+- Updated CLI binary installation paths for Fedora filesystem layout
+- Improved udev rules installation with Fedora's udev system
+- Updated group creation and permissions for Fedora standards
+- Enhanced dependency on kmod-maccel package
+- Removed Ubuntu-specific workarounds and dependencies
