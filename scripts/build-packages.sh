@@ -33,6 +33,7 @@ log_error() {
 MACCEL_REPO_URL="https://github.com/Gnarus-G/maccel"
 WORK_DIR="/tmp/maccel-build"
 RPMBUILD_ROOT="$HOME/rpmbuild"
+REPO_ROOT="$(pwd)"  # Save the repository root directory
 
 # Function to clean up work directory
 cleanup() {
@@ -121,10 +122,12 @@ prepare_rpm_sources() {
     
     # Copy spec file to RPM SPECS directory
     local spec_file="${package_name}.spec"
-    if [[ -f "$RPMBUILD_ROOT/../${spec_file}" ]]; then
-        cp "$RPMBUILD_ROOT/../${spec_file}" "$RPMBUILD_ROOT/SPECS/"
+    local repo_spec_file="$REPO_ROOT/${spec_file}"
+    if [[ -f "$repo_spec_file" ]]; then
+        cp "$repo_spec_file" "$RPMBUILD_ROOT/SPECS/"
+        log_success "Spec file copied: $spec_file"
     else
-        log_error "Spec file not found: $spec_file"
+        log_error "Spec file not found: $repo_spec_file"
         return 1
     fi
     
