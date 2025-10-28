@@ -37,6 +37,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/*.sh
+          ls -la scripts/
+
       - name: Validate kernel version format
         run: |
           # Source error handling library
@@ -138,6 +143,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
       - name: Set up build environment
         run: |
           # Source error handling library
@@ -228,6 +236,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -547,6 +558,12 @@ jobs:
     if: needs.validate-and-check.outputs.should_build == 'false'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
       - name: Report existing packages
         run: |
           # Source notification system
@@ -572,6 +589,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
 
       - name: Report build failure
         run: |

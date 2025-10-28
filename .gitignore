@@ -47,9 +47,7 @@ Thumbs.db
 # GitHub Actions artifacts
 artifacts/
 
-# Other
-scripts/validate*
-scripts/test*
-scripts/setup-github*
-scripts/integration-test*
-scripts/run-integration-test*
+# Other - exclude temporary test files but keep our integration test scripts
+scripts/validate-temp*
+scripts/test-temp*
+scripts/setup-github-temp*
