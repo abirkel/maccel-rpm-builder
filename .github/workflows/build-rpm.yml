@@ -98,6 +98,9 @@ jobs:
     needs: validate-and-check
     if: needs.validate-and-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for Sigstore keyless signing
     strategy:
       matrix:
         package: [kmod-maccel, maccel]
@@ -115,19 +118,41 @@ jobs:
           echo "Building ${{ matrix.package }} package"
           ./scripts/build-packages.sh "${{ matrix.package }}" "$KERNEL_VERSION" "${{ needs.validate-and-check.outputs.maccel_version }}" "$FEDORA_VERSION" "./packages"
 
+      - name: Sign and verify packages
+        run: |
+          echo "Running package signing and verification process..."
+          ./scripts/sign-packages.sh full-process "./packages"
+          
+          # List all generated files for verification
+          echo "Generated files:"
+          ls -la packages/
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.package }}-${{ env.KERNEL_VERSION }}
           path: |
             packages/*.rpm
+            packages/*.sig
+            packages/*.crt
             packages/checksums.txt
             packages/build-info.json
+            packages/signing-summary.json
+            packages/PACKAGE_VERIFICATION.md
+            packages/verification-report.txt
+            packages/sigstore-info.txt
 
   create-release:
     needs: [validate-and-check, build-packages]
     if: needs.validate-and-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for creating releases
+      id-token: write  # Required for Sigstore verification
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_url: ${{ steps.release.outputs.release_url }}
+      package_urls: ${{ steps.release.outputs.package_urls }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -135,60 +160,310 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
-      - name: Create GitHub release
+      - name: Prepare release assets
+        id: prepare
         run: |
+          echo "Preparing release assets..."
+          
+          # Create release directory
+          mkdir -p release-assets
+          
+          # Collect all RPM files and metadata from artifacts
+          find . -name "*.rpm" -exec cp {} release-assets/ \;
+          find . -name "checksums.txt" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find . -name "build-info.json" -exec cp {} release-assets/ \; 2>/dev/null || true
+          
+          # Collect signing and verification files
+          find . -name "*.sig" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find . -name "*.crt" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find . -name "signing-summary.json" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find . -name "PACKAGE_VERIFICATION.md" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find . -name "verification-report.txt" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find . -name "sigstore-info.txt" -exec cp {} release-assets/ \; 2>/dev/null || true
+          
+          cd release-assets
+          
+          # Generate comprehensive checksums if not already present
+          if [[ ! -f checksums.txt ]]; then
+            echo "Generating checksums for all RPM packages..."
+            sha256sum *.rpm > checksums.txt
+          fi
+          
+          # Extract architecture from kernel version for metadata
+          ARCH="x86_64"  # Default
+          if [[ "$KERNEL_VERSION" =~ \.([^.]+)$ ]]; then
+            ARCH="${BASH_REMATCH[1]}"
+          fi
+          
+          # Generate enhanced build metadata if not already present
+          if [[ ! -f build-info.json ]]; then
+            echo "Generating build metadata..."
+            cat > build-info.json << EOF
+          {
+            "kernel_version": "$KERNEL_VERSION",
+            "maccel_version": "${{ needs.validate-and-check.outputs.maccel_version }}",
+            "maccel_commit": "${{ needs.validate-and-check.outputs.source_commit }}",
+            "fedora_version": "$FEDORA_VERSION",
+            "architecture": "$ARCH",
+            "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "trigger_repo": "$TRIGGER_REPO",
+            "packages": [
+              {
+                "name": "kmod-maccel",
+                "version": "${{ needs.validate-and-check.outputs.maccel_version }}-1.fc$FEDORA_VERSION",
+                "filename": "kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc$FEDORA_VERSION.$ARCH.rpm",
+                "type": "kernel-module",
+                "description": "Kernel module for maccel mouse acceleration driver"
+              },
+              {
+                "name": "maccel",
+                "version": "${{ needs.validate-and-check.outputs.maccel_version }}-1.fc$FEDORA_VERSION",
+                "filename": "maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc$FEDORA_VERSION.$ARCH.rpm",
+                "type": "userspace-tools",
+                "description": "Userspace CLI tools and configuration for maccel"
+              }
+            ]
+          }
+          EOF
+          fi
+          
+          # List all assets for verification
+          echo "Release assets prepared:"
+          ls -la
+          
+          # Output asset information for next step
+          echo "rpm_count=$(ls -1 *.rpm | wc -l)" >> $GITHUB_OUTPUT
+          echo "total_size=$(du -sh . | cut -f1)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        id: release
+        run: |
+          cd release-assets
+          
           RELEASE_TAG="kernel-${KERNEL_VERSION}-maccel-${{ needs.validate-and-check.outputs.maccel_version }}"
           RELEASE_NAME="Kernel ${KERNEL_VERSION} - maccel ${{ needs.validate-and-check.outputs.maccel_version }}"
           
           echo "Creating release: $RELEASE_TAG"
+          echo "Release name: $RELEASE_NAME"
           
-          # Collect all RPM files and metadata
-          find . -name "*.rpm" -exec cp {} . \;
-          find . -name "checksums.txt" -exec cp {} . \;
-          find . -name "build-info.json" -exec cp {} . \;
+          # Get upstream release notes for maccel version
+          UPSTREAM_NOTES=""
+          if UPSTREAM_NOTES=$(curl -s "https://api.github.com/repos/Gnarus-G/maccel/releases/tags/v${{ needs.validate-and-check.outputs.maccel_version }}" | jq -r '.body' 2>/dev/null) && [[ "$UPSTREAM_NOTES" != "null" && -n "$UPSTREAM_NOTES" ]]; then
+            echo "Found upstream release notes for maccel ${{ needs.validate-and-check.outputs.maccel_version }}"
+          else
+            # Try without 'v' prefix
+            if UPSTREAM_NOTES=$(curl -s "https://api.github.com/repos/Gnarus-G/maccel/releases/tags/${{ needs.validate-and-check.outputs.maccel_version }}" | jq -r '.body' 2>/dev/null) && [[ "$UPSTREAM_NOTES" != "null" && -n "$UPSTREAM_NOTES" ]]; then
+              echo "Found upstream release notes for maccel ${{ needs.validate-and-check.outputs.maccel_version }}"
+            else
+              echo "No upstream release notes found for maccel ${{ needs.validate-and-check.outputs.maccel_version }}"
+              UPSTREAM_NOTES=""
+            fi
+          fi
           
-          # Create release notes
-          cat > release_notes.md << 'EOF'
-          RPM packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }} built for kernel $KERNEL_VERSION
-
-          ## Package Information
-          - **Kernel Version**: $KERNEL_VERSION
-          - **Maccel Version**: ${{ needs.validate-and-check.outputs.maccel_version }}
-          - **Source Commit**: ${{ needs.validate-and-check.outputs.source_commit }}
-          - **Build Date**: $(date -u +%Y-%m-%d)
-
-          ## Packages Included
-          - `kmod-maccel`: Kernel module for maccel driver
-          - `maccel`: Userspace CLI tools and configuration
-
-          ## Installation
-          Download the RPM packages and install with:
-          ```bash
+          # Create comprehensive release notes
+          cat > release_notes.md << EOF
+          # RPM Packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }}
+          
+          Built for **Kernel ${KERNEL_VERSION}** on **Fedora ${FEDORA_VERSION}**
+          
+          ## 📦 Package Information
+          
+          | Package | Version | Type | Description |
+          |---------|---------|------|-------------|
+          | \`kmod-maccel\` | ${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION} | Kernel Module | maccel driver for kernel ${KERNEL_VERSION} |
+          | \`maccel\` | ${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION} | CLI Tools | Userspace tools and configuration |
+          
+          ## 🔧 Build Details
+          
+          - **Kernel Version**: \`${KERNEL_VERSION}\`
+          - **Maccel Version**: \`${{ needs.validate-and-check.outputs.maccel_version }}\`
+          - **Source Commit**: \`${{ needs.validate-and-check.outputs.source_commit }}\`
+          - **Build Date**: \`$(date -u +%Y-%m-%d)\`
+          - **Architecture**: \`$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2)\`
+          - **Triggered by**: \`${TRIGGER_REPO}\`
+          
+          ## 📥 Installation
+          
+          ### Quick Install
+          \`\`\`bash
+          # Download both packages
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          
+          # Install packages
           sudo dnf install ./kmod-maccel-*.rpm ./maccel-*.rpm
-          ```
-
-          ## Verification
-          Package checksums are included in `checksums.txt`. Verify with:
-          ```bash
+          \`\`\`
+          
+          ### Blue Build Integration
+          \`\`\`yaml
+          # In your Blue Build recipe
+          rpm:
+            install:
+              - https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+              - https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          \`\`\`
+          
+          ## 🔐 Verification
+          
+          ### Package Integrity
+          \`\`\`bash
+          # Download checksums
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/checksums.txt
+          
+          # Verify packages
           sha256sum -c checksums.txt
-          ```
+          \`\`\`
+          
+          ### Package Signatures (Sigstore Keyless)
+          
+          Packages are signed using **Sigstore keyless signing** with GitHub OIDC identity.
+          
+          \`\`\`bash
+          # Install cosign (Sigstore CLI)
+          curl -sLO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+          chmod +x cosign-linux-amd64
+          sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+          
+          # Download signature and certificate files
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm.sig
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm.crt
+          
+          # Verify package signature
+          cosign verify-blob --signature kmod-maccel-*.rpm.sig --certificate kmod-maccel-*.rpm.crt \\
+            --certificate-identity-regexp ".*" \\
+            --certificate-oidc-issuer-regexp ".*" \\
+            kmod-maccel-*.rpm
+          \`\`\`
+          
+          **Benefits of Sigstore:**
+          - 🔐 No key management required
+          - 🌐 Cryptographic proof via GitHub OIDC identity  
+          - 📋 Transparency through public Rekor audit log
+          - ⏰ Short-lived certificates (no long-term key compromise)
+          
+          ### Comprehensive Verification Guide
+          For detailed verification instructions, see: [PACKAGE_VERIFICATION.md](https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/PACKAGE_VERIFICATION.md)
+          
+          ### Package Information
+          \`\`\`bash
+          # Query package details
+          rpm -qip kmod-maccel-*.rpm
+          rpm -qip maccel-*.rpm
+          \`\`\`
+          
+          ## 📋 Package Contents
+          
+          ### kmod-maccel Package
+          - Kernel module: \`maccel.ko\` for kernel ${KERNEL_VERSION}
+          - Module configuration and loading scripts
+          - Kernel version-specific dependencies
+          
+          ### maccel Package
+          - CLI binary: \`/usr/bin/maccel\`
+          - Udev rules: \`/etc/udev/rules.d/99-maccel.rules\`
+          - Configuration files and documentation
+          - Dependency on \`kmod-maccel\` package
+          
+          ## 🔗 Stable Download URLs
+          
+          These URLs are permanent and suitable for automated consumption:
+          
+          - **kmod-maccel**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          - **maccel**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          - **checksums**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/checksums.txt
+          - **build-info**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/build-info.json
+          - **verification-guide**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/PACKAGE_VERIFICATION.md
+          - **sigstore-info**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/sigstore-info.txt
+          
+          **Signature Files:**
+          - kmod-maccel signatures: \`.sig\` and \`.crt\` files for Sigstore verification
+          - maccel signatures: \`.sig\` and \`.crt\` files for Sigstore verification
           EOF
           
-          # Create release with packages and metadata
+          # Append upstream release notes if available
+          if [[ -n "$UPSTREAM_NOTES" ]]; then
+            cat >> release_notes.md << EOF
+          
+          ## 📝 Upstream Release Notes (maccel ${{ needs.validate-and-check.outputs.maccel_version }})
+          
+          $UPSTREAM_NOTES
+          EOF
+          fi
+          
+          # Create the release with all assets
+          echo "Creating GitHub release with assets..."
+          
+          # Prepare asset list - include all available files
+          ASSETS="*.rpm checksums.txt build-info.json"
+          
+          # Add Sigstore signature files if they exist
+          for sig_file in *.sig; do
+            [[ -f "$sig_file" ]] && ASSETS="$ASSETS $sig_file"
+          done
+          for crt_file in *.crt; do
+            [[ -f "$crt_file" ]] && ASSETS="$ASSETS $crt_file"
+          done
+          
+          # Add other signing/verification files if they exist
+          [[ -f signing-summary.json ]] && ASSETS="$ASSETS signing-summary.json"
+          [[ -f PACKAGE_VERIFICATION.md ]] && ASSETS="$ASSETS PACKAGE_VERIFICATION.md"
+          [[ -f verification-report.txt ]] && ASSETS="$ASSETS verification-report.txt"
+          [[ -f sigstore-info.txt ]] && ASSETS="$ASSETS sigstore-info.txt"
+          
+          echo "Assets to upload: $ASSETS"
+          
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_NAME" \
             --notes-file release_notes.md \
             --latest=false \
-            *.rpm checksums.txt build-info.json
+            $ASSETS
+          
+          # Output release information
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          
+          # Generate package URLs JSON for output
+          ARCH=$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2)
+          PACKAGE_URLS=$(cat << EOF
+          [
+            {
+              "name": "kmod-maccel",
+              "filename": "kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm",
+              "url": "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm"
+            },
+            {
+              "name": "maccel",
+              "filename": "maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm",
+              "url": "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm"
+            }
+          ]
+          EOF
+          )
+          
+          echo "package_urls<<EOF" >> $GITHUB_OUTPUT
+          echo "$PACKAGE_URLS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "✅ Release created successfully: $RELEASE_TAG"
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Report build success
         run: |
-          RELEASE_TAG="kernel-${KERNEL_VERSION}-maccel-${{ needs.validate-and-check.outputs.maccel_version }}"
-          echo "✅ Build completed successfully!"
-          echo "Release: $RELEASE_TAG"
-          echo "Packages available at: https://github.com/${{ github.repository }}/releases/tag/$RELEASE_TAG"
+          echo "🎉 Build completed successfully!"
+          echo ""
+          echo "📦 **Release Information:**"
+          echo "- **Tag**: ${{ steps.release.outputs.release_tag }}"
+          echo "- **URL**: ${{ steps.release.outputs.release_url }}"
+          echo "- **Packages**: ${{ steps.prepare.outputs.rpm_count }} RPM files"
+          echo "- **Total Size**: ${{ steps.prepare.outputs.total_size }}"
+          echo ""
+          echo "🔗 **Download URLs:**"
+          echo '${{ steps.release.outputs.package_urls }}' | jq -r '.[] | "- **\(.name)**: \(.url)"'
+          echo ""
+          echo "📋 **For Blue Build Integration:**"
+          echo "Use these stable URLs in your Blue Build recipe files."
 
   report-existing:
     needs: validate-and-check

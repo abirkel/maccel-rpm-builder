@@ -344,11 +344,20 @@ copy_built_packages() {
     sha256sum *.rpm > checksums.txt
     log_success "Generated checksums file"
     
+    # Get source commit hash for metadata
+    local source_commit="unknown"
+    if [[ -d "$WORK_DIR/maccel/.git" ]]; then
+        cd "$WORK_DIR/maccel"
+        source_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+        cd "$output_dir"
+    fi
+    
     # Create build metadata
     cat > build-info.json << EOF
 {
   "kernel_version": "$kernel_version",
   "maccel_version": "$maccel_version",
+  "maccel_commit": "$source_commit",
   "fedora_version": "$fedora_version",
   "architecture": "$arch",
   "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -356,12 +365,14 @@ copy_built_packages() {
     {
       "name": "kmod-maccel",
       "filename": "$kmod_filename",
-      "type": "kernel-module"
+      "type": "kernel-module",
+      "description": "Kernel module for maccel mouse acceleration driver"
     },
     {
       "name": "maccel",
       "filename": "$maccel_filename",
-      "type": "userspace-tools"
+      "type": "userspace-tools",
+      "description": "Userspace CLI tools and configuration for maccel"
     }
   ]
 }

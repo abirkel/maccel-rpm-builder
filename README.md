@@ -101,6 +101,45 @@ You can manually check for existing packages using the detection script:
 ./scripts/check-existing-packages.sh release-tag 6.11.5-300.fc41.x86_64 1.0.0
 ```
 
+## Package Verification
+
+All packages are signed using **Sigstore keyless signing** for enhanced security and transparency.
+
+### Quick Verification
+
+```bash
+# Install cosign (Sigstore CLI)
+curl -sLO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+chmod +x cosign-linux-amd64
+sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+
+# Download and verify a package
+wget https://github.com/USERNAME/maccel-rpm-builder/releases/download/RELEASE_TAG/kmod-maccel-VERSION.rpm
+wget https://github.com/USERNAME/maccel-rpm-builder/releases/download/RELEASE_TAG/kmod-maccel-VERSION.rpm.sig
+wget https://github.com/USERNAME/maccel-rpm-builder/releases/download/RELEASE_TAG/kmod-maccel-VERSION.rpm.crt
+
+# Verify signature
+cosign verify-blob --signature kmod-maccel-VERSION.rpm.sig --certificate kmod-maccel-VERSION.rpm.crt \
+  --certificate-identity-regexp ".*" \
+  --certificate-oidc-issuer-regexp ".*" \
+  kmod-maccel-VERSION.rpm
+```
+
+### Verification Features
+
+- **🔐 Keyless Signing**: No key management required - uses GitHub OIDC identity
+- **🌐 Transparency**: All signatures logged in public Rekor transparency log
+- **⏰ Short-lived Certificates**: No long-term key compromise risk
+- **📋 Cryptographic Proof**: Verifiable identity and build provenance
+
+### Additional Verification
+
+Each release also includes:
+- `checksums.txt` - SHA256 checksums for integrity verification
+- `build-info.json` - Build metadata including source commit hashes
+- `PACKAGE_VERIFICATION.md` - Comprehensive verification guide
+- `sigstore-info.txt` - Detailed Sigstore verification instructions
+
 ## Development
 
 This repository follows the spec-driven development approach. See the [specification documents](.kiro/specs/rpm-packaging/) for detailed requirements and design.
