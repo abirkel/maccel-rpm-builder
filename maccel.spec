@@ -30,7 +30,7 @@ binary, udev rules for device access, and configuration files.
 This package requires the kmod-maccel kernel module to function properly.
 
 %prep
-%setup -q -n maccel-main
+%setup -q -n maccel-%{version}
 
 %build
 # Build the CLI using cargo workspace
