@@ -48,4 +48,6 @@ Thumbs.db
 artifacts/
 
 # Other
-scripts/
+scripts/validate*
+scripts/test*
+scripts/setup-github*

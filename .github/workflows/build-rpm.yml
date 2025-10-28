@@ -48,26 +48,17 @@ jobs:
       - name: Detect maccel version
         id: version
         run: |
-          echo "Detecting maccel version..."
+          echo "Detecting maccel version using detection script..."
           
-          # Method 1: Git release tags (preferred)
-          MACCEL_VERSION=$(gh api repos/Gnarus-G/maccel/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^v//') || true
-          
-          if [[ -z "$MACCEL_VERSION" ]]; then
-            echo "No release tags found, trying Cargo.toml..."
-            # Method 2: Cargo.toml version (fallback)
-            MACCEL_VERSION=$(curl -s https://raw.githubusercontent.com/Gnarus-G/maccel/main/Cargo.toml | grep '^version = ' | head -1 | cut -d'"' -f2) || true
-          fi
-          
-          if [[ -z "$MACCEL_VERSION" ]]; then
-            echo "Cargo.toml version not found, using commit hash..."
-            # Method 3: Git commit hash (final fallback)
-            COMMIT_HASH=$(curl -s https://api.github.com/repos/Gnarus-G/maccel/commits/main | jq -r '.sha[:7]')
-            MACCEL_VERSION="0.0.0+${COMMIT_HASH}"
-          fi
+          # Use the dedicated version detection script
+          MACCEL_VERSION=$(./scripts/detect-maccel-version.sh detect)
+          COMMIT_HASH=$(./scripts/detect-maccel-version.sh commit-hash || echo "unknown")
           
           echo "Detected maccel version: $MACCEL_VERSION"
+          echo "Source commit hash: $COMMIT_HASH"
+          
           echo "maccel_version=$MACCEL_VERSION" >> $GITHUB_OUTPUT
+          echo "source_commit=$COMMIT_HASH" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -109,18 +100,21 @@ jobs:
       - name: Set up build environment
         run: |
           echo "Setting up build environment for ${{ matrix.package }}"
-          # This will be implemented in task 3.2
+          ./scripts/setup-build-environment.sh "$KERNEL_VERSION" "$FEDORA_VERSION" "${{ needs.validate-and-check.outputs.maccel_version }}"
 
       - name: Build ${{ matrix.package }} package
         run: |
           echo "Building ${{ matrix.package }} package"
-          # This will be implemented in task 3.4
+          ./scripts/build-packages.sh "${{ matrix.package }}" "$KERNEL_VERSION" "${{ needs.validate-and-check.outputs.maccel_version }}" "$FEDORA_VERSION" "./packages"
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.package }}-${{ env.KERNEL_VERSION }}
-          path: "*.rpm"
+          path: |
+            packages/*.rpm
+            packages/checksums.txt
+            packages/build-info.json
 
   create-release:
     needs: [validate-and-check, build-packages]
@@ -140,12 +134,39 @@ jobs:
           
           echo "Creating release: $RELEASE_TAG"
           
-          # Create release with packages
+          # Collect all RPM files and metadata
+          find . -name "*.rpm" -exec cp {} . \;
+          find . -name "checksums.txt" -exec cp {} . \;
+          find . -name "build-info.json" -exec cp {} . \;
+          
+          # Create release with packages and metadata
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_NAME" \
-            --notes "RPM packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }} built for kernel $KERNEL_VERSION" \
+            --notes "RPM packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }} built for kernel $KERNEL_VERSION
+
+## Package Information
+- **Kernel Version**: $KERNEL_VERSION
+- **Maccel Version**: ${{ needs.validate-and-check.outputs.maccel_version }}
+- **Source Commit**: ${{ needs.validate-and-check.outputs.source_commit }}
+- **Build Date**: $(date -u +%Y-%m-%d)
+
+## Packages Included
+- \`kmod-maccel\`: Kernel module for maccel driver
+- \`maccel\`: Userspace CLI tools and configuration
+
+## Installation
+Download the RPM packages and install with:
+\`\`\`bash
+sudo dnf install ./kmod-maccel-*.rpm ./maccel-*.rpm
+\`\`\`
+
+## Verification
+Package checksums are included in \`checksums.txt\`. Verify with:
+\`\`\`bash
+sha256sum -c checksums.txt
+\`\`\`" \
             --latest=false \
-            */*.rpm
+            *.rpm checksums.txt build-info.json
         env:
           GH_TOKEN: ${{ github.token }}
 
