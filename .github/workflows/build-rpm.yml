@@ -590,10 +590,7 @@ jobs:
             ERROR_TYPE="VALIDATION_ERROR"
             ERROR_MESSAGE="Input validation or package check failed"
             ERROR_DETAILS="The build failed during the validation phase. This could be due to invalid kernel version format, maccel source access issues, or GitHub API problems."
-            TROUBLESHOOTING="- Verify kernel version format: X.Y.Z-REL.fcN.ARCH
-- Check maccel repository accessibility
-- Ensure GitHub token has proper permissions
-- Verify network connectivity"
+            TROUBLESHOOTING="- Verify kernel version format: X.Y.Z-REL.fcN.ARCH; Check maccel repository accessibility; Ensure GitHub token has proper permissions; Verify network connectivity"
           fi
           
           # Check build job status
@@ -601,10 +598,7 @@ jobs:
             ERROR_TYPE="BUILD_ERROR"
             ERROR_MESSAGE="RPM package building failed"
             ERROR_DETAILS="The build failed during the package compilation phase. This could be due to missing dependencies, compilation errors, or system resource issues."
-            TROUBLESHOOTING="- Check build dependencies (rpm-build, kernel-devel, rust)
-- Verify sufficient disk space and memory
-- Review build logs for specific compilation errors
-- Ensure kernel headers are available for target version"
+            TROUBLESHOOTING="- Check build dependencies (rpm-build, kernel-devel, rust); Verify sufficient disk space and memory; Review build logs for specific compilation errors; Ensure kernel headers are available for target version"
           fi
           
           # Check release job status
@@ -612,10 +606,7 @@ jobs:
             ERROR_TYPE="RELEASE_ERROR"
             ERROR_MESSAGE="GitHub release creation failed"
             ERROR_DETAILS="The build completed successfully but failed to create the GitHub release. This could be due to permissions issues or GitHub API problems."
-            TROUBLESHOOTING="- Verify GitHub token has write permissions to repository
-- Check GitHub API status and rate limits
-- Ensure release tag doesn't already exist
-- Review GitHub Actions permissions settings"
+            TROUBLESHOOTING="- Verify GitHub token has write permissions to repository; Check GitHub API status and rate limits; Ensure release tag doesn't already exist; Review GitHub Actions permissions settings"
           fi
           
           # Check for cancellation
@@ -623,10 +614,7 @@ jobs:
             ERROR_TYPE="BUILD_CANCELLED"
             ERROR_MESSAGE="Build process was cancelled"
             ERROR_DETAILS="The build was cancelled before completion. This could be due to timeout, manual cancellation, or system issues."
-            TROUBLESHOOTING="- Check for build timeout (default: 1 hour)
-- Verify system resources and stability
-- Review workflow logs for cancellation reason
-- Retry the build if cancellation was unintentional"
+            TROUBLESHOOTING="- Check for build timeout (default: 1 hour); Verify system resources and stability; Review workflow logs for cancellation reason; Retry the build if cancellation was unintentional"
           fi
           
           # Create detailed error report

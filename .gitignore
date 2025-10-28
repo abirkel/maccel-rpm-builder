@@ -51,3 +51,5 @@ artifacts/
 scripts/validate*
 scripts/test*
 scripts/setup-github*
+scripts/integration-test*
+scripts/run-integration-test*
