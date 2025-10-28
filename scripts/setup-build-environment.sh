@@ -34,26 +34,87 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Function to detect OS and package manager
+detect_os() {
+    if command_exists apt-get; then
+        echo "ubuntu"
+    elif command_exists dnf; then
+        echo "fedora"
+    elif command_exists yum; then
+        echo "rhel"
+    else
+        echo "unknown"
+    fi
+}
+
 # Function to install RPM build dependencies
 install_rpm_dependencies() {
     log_info "Installing RPM build dependencies..."
     
-    # Update package manager
-    sudo dnf update -y
+    local os_type=$(detect_os)
+    log_info "Detected OS: $os_type"
     
-    # Install core RPM build tools
-    sudo dnf install -y \
-        rpm-build \
-        rpm-devel \
-        rpmlint \
-        rpmdevtools \
-        make \
-        gcc \
-        git \
-        curl \
-        wget
-    
-    log_success "RPM build tools installed"
+    case "$os_type" in
+        "ubuntu")
+            # Update package manager
+            sudo apt-get update -y
+            
+            # Install core RPM build tools for Ubuntu
+            sudo apt-get install -y \
+                rpm \
+                rpmlint \
+                build-essential \
+                make \
+                gcc \
+                git \
+                curl \
+                wget \
+                alien \
+                fakeroot
+            
+            log_success "RPM build tools installed (Ubuntu)"
+            ;;
+        "fedora")
+            # Update package manager
+            sudo dnf update -y
+            
+            # Install core RPM build tools
+            sudo dnf install -y \
+                rpm-build \
+                rpm-devel \
+                rpmlint \
+                rpmdevtools \
+                make \
+                gcc \
+                git \
+                curl \
+                wget
+            
+            log_success "RPM build tools installed (Fedora)"
+            ;;
+        "rhel")
+            # Update package manager
+            sudo yum update -y
+            
+            # Install core RPM build tools
+            sudo yum install -y \
+                rpm-build \
+                rpm-devel \
+                rpmlint \
+                rpmdevtools \
+                make \
+                gcc \
+                git \
+                curl \
+                wget
+            
+            log_success "RPM build tools installed (RHEL)"
+            ;;
+        *)
+            log_error "Unsupported OS for RPM building: $os_type"
+            return 1
+            ;;
+    esac
 }
 
 # Function to install kernel development packages
@@ -61,17 +122,47 @@ install_kernel_devel() {
     local kernel_version="$1"
     log_info "Installing kernel development packages for $kernel_version..."
     
-    # Extract base kernel version (remove architecture)
-    local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
+    local os_type=$(detect_os)
     
-    # Install kernel-devel for the specific version
-    if sudo dnf install -y "kernel-devel-${base_version}"; then
-        log_success "Kernel development packages installed for $kernel_version"
-    else
-        log_warning "Failed to install exact kernel-devel version, trying generic install..."
-        sudo dnf install -y kernel-devel
-        log_success "Generic kernel-devel installed"
-    fi
+    case "$os_type" in
+        "ubuntu")
+            # For Ubuntu, we'll install generic kernel headers since we're cross-building
+            log_info "Installing generic kernel headers for Ubuntu (cross-building for Fedora)"
+            sudo apt-get install -y \
+                linux-headers-generic \
+                linux-libc-dev
+            log_success "Generic kernel development packages installed"
+            ;;
+        "fedora")
+            # Extract base kernel version (remove architecture)
+            local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
+            
+            # Install kernel-devel for the specific version
+            if sudo dnf install -y "kernel-devel-${base_version}"; then
+                log_success "Kernel development packages installed for $kernel_version"
+            else
+                log_warning "Failed to install exact kernel-devel version, trying generic install..."
+                sudo dnf install -y kernel-devel
+                log_success "Generic kernel-devel installed"
+            fi
+            ;;
+        "rhel")
+            # Extract base kernel version (remove architecture)
+            local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
+            
+            # Install kernel-devel for the specific version
+            if sudo yum install -y "kernel-devel-${base_version}"; then
+                log_success "Kernel development packages installed for $kernel_version"
+            else
+                log_warning "Failed to install exact kernel-devel version, trying generic install..."
+                sudo yum install -y kernel-devel
+                log_success "Generic kernel-devel installed"
+            fi
+            ;;
+        *)
+            log_warning "Skipping kernel-devel installation for unsupported OS: $os_type"
+            ;;
+    esac
 }
 
 # Function to install Rust toolchain
