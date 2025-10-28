@@ -193,12 +193,34 @@ install_rust() {
 setup_rpm_build_tree() {
     log_info "Setting up RPM build tree..."
     
-    # Create RPM build directories
-    rpmdev-setuptree
+    local os_type=$(detect_os)
+    local rpmbuild_root="$HOME/rpmbuild"
+    
+    case "$os_type" in
+        "ubuntu")
+            # Manually create RPM build directories for Ubuntu
+            log_info "Creating RPM build directories manually (Ubuntu)"
+            mkdir -p "$rpmbuild_root"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+            mkdir -p "$rpmbuild_root/RPMS"/{i386,i586,i686,x86_64,noarch}
+            
+            # Create .rpmmacros file
+            cat > "$HOME/.rpmmacros" << EOF
+%_topdir $rpmbuild_root
+%_tmppath $rpmbuild_root/tmp
+EOF
+            ;;
+        "fedora"|"rhel")
+            # Use rpmdev-setuptree for Fedora/RHEL
+            rpmdev-setuptree
+            ;;
+        *)
+            log_error "Unsupported OS for RPM build tree setup: $os_type"
+            return 1
+            ;;
+    esac
     
     # Verify directories were created
     local rpm_dirs=("BUILD" "RPMS" "SOURCES" "SPECS" "SRPMS")
-    local rpmbuild_root="$HOME/rpmbuild"
     
     for dir in "${rpm_dirs[@]}"; do
         if [[ ! -d "$rpmbuild_root/$dir" ]]; then
