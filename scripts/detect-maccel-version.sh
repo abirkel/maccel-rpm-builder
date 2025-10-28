@@ -134,15 +134,33 @@ get_version_from_commit_hash() {
 
 # Function to get maccel source commit hash for build tracking
 get_source_commit_hash() {
+    log_info "Getting maccel source commit hash..."
     local commit_hash=""
     
-    commit_hash=$(curl -s https://api.github.com/repos/Gnarus-G/maccel/commits/main | \
-                 jq -r '.sha' 2>/dev/null || true)
+    # First check if jq is available
+    if ! command -v jq >/dev/null 2>&1; then
+        log_error "jq is not installed - required for JSON parsing"
+        return 1
+    fi
+    
+    # Get commit hash from GitHub API
+    local api_response=""
+    api_response=$(curl -s https://api.github.com/repos/Gnarus-G/maccel/commits/main 2>/dev/null || true)
+    
+    if [[ -z "$api_response" ]]; then
+        log_error "Failed to get response from GitHub API"
+        return 1
+    fi
+    
+    commit_hash=$(echo "$api_response" | jq -r '.sha' 2>/dev/null || true)
     
     if [[ -n "$commit_hash" && "$commit_hash" != "null" ]]; then
+        log_success "Found source commit hash: ${commit_hash:0:8}..."
         echo "$commit_hash"
         return 0
     else
+        log_error "Failed to parse commit hash from API response"
+        log_info "API response preview: ${api_response:0:200}..."
         return 1
     fi
 }

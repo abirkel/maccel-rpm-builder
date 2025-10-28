@@ -99,7 +99,8 @@ install_rpm_dependencies() {
                 tar \
                 gzip \
                 pkg-config \
-                libc6-dev
+                libc6-dev \
+                jq
             
             log_success "RPM build tools and Rust installed (Ubuntu)"
             ;;
@@ -124,7 +125,6 @@ install_kernel_devel() {
             sudo apt-get install -y --no-install-recommends \
                 linux-headers-generic \
                 linux-libc-dev \
-                dkms \
                 udev \
                 kmod
             log_success "Kernel development packages and maccel dependencies installed"
