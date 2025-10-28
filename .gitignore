@@ -1,0 +1,67 @@
+# RPM Build Artifacts
+*.rpm
+*.src.rpm
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+
+# RPM Build Directories
+rpmbuild/
+RPMS/
+SRPMS/
+BUILD/
+BUILDROOT/
+SOURCES/
+SPECS/
+tmp/
+
+# Downloaded source code
+maccel-*/
+maccel.tar.gz
+maccel.zip
+
+# Build logs and temporary files
+*.log
+*.tmp
+build-*.log
+rpmlint-*.log
+
+# Kernel build artifacts
+*.ko
+*.o
+*.mod
+*.mod.c
+*.symvers
+*.order
+modules.builtin
+Module.markers
+
+# Rust build artifacts (for CLI compilation)
+target/
+Cargo.lock
+*.pdb
+
+# GitHub Actions artifacts
+.github/workflows/*.log
+
+# System files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+.kiro/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Cache directories
+.cache/
+node_modules/
