@@ -17,7 +17,24 @@ on:
 jobs:
   test-dispatch:
     runs-on: ubuntu-latest
+    container:
+      image: fedora:${{ inputs.fedora_version || '41' }}
+      options: --privileged --user root
     steps:
+      - name: Setup container environment
+        run: |
+          # Install essential packages for GitHub Actions
+          dnf update -y
+          dnf install -y git curl jq wget findutils which
+          
+          # Install GitHub CLI
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+          
+          # Set up Git configuration for container
+          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
+
       - name: Checkout repository
         uses: actions/checkout@v4
 

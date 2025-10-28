@@ -24,16 +24,42 @@ env:
   FEDORA_VERSION: ${{ github.event.client_payload.fedora_version || inputs.fedora_version }}
   TRIGGER_REPO: ${{ github.event.client_payload.trigger_repo || 'manual' }}
   FORCE_REBUILD: ${{ github.event.client_payload.force_rebuild || inputs.force_rebuild || false }}
+  # Container-specific environment variables
+  HOME: /root
+  USER: root
+  SHELL: /bin/bash
+  # Ensure proper locale for container builds
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
 
 jobs:
   validate-and-check:
     runs-on: ubuntu-latest
+    container:
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      options: --privileged --user root
+      volumes:
+        - /sys/fs/cgroup:/sys/fs/cgroup:rw
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
       maccel_version: ${{ steps.version.outputs.maccel_version }}
       existing_release: ${{ steps.check.outputs.existing_release }}
       package_info: ${{ steps.check.outputs.package_info }}
     steps:
+      - name: Setup container environment
+        run: |
+          # Install essential packages for GitHub Actions and our scripts
+          dnf update -y
+          dnf install -y git curl jq wget findutils which
+          
+          # Install GitHub CLI
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+          
+          # Set up Git configuration for container
+          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -139,6 +165,13 @@ jobs:
     needs: validate-and-check
     if: needs.validate-and-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    container:
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      options: --privileged --user root --tmpfs /tmp --tmpfs /var/tmp
+      volumes:
+        - /sys/fs/cgroup:/sys/fs/cgroup:rw
+        - /lib/modules:/lib/modules:ro
+        - /usr/src:/usr/src:ro
     permissions:
       contents: read
       id-token: write  # Required for Sigstore keyless signing
@@ -147,6 +180,35 @@ jobs:
         package: [kmod-maccel, maccel]
       fail-fast: false  # Continue building other packages if one fails
     steps:
+      - name: Setup container environment
+        run: |
+          # Install essential packages for GitHub Actions and build tools
+          dnf update -y
+          dnf install -y git curl jq wget findutils which rpm-build rpmdevtools rpmlint
+          
+          # Install build dependencies
+          dnf install -y gcc make rust cargo
+          
+          # Install kernel-devel for the specific kernel version if available
+          # This will be handled by the build scripts for the exact version needed
+          dnf install -y kernel-devel || echo "Generic kernel-devel installation failed, will be handled by build scripts"
+          
+          # Install GitHub CLI
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+          
+          # Install Sigstore cosign for package signing
+          curl -sLO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+          chmod +x cosign-linux-amd64
+          mv cosign-linux-amd64 /usr/local/bin/cosign
+          
+          # Set up Git configuration for container
+          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
+          
+          # Set up RPM build environment
+          rpmdev-setuptree
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -214,6 +276,18 @@ jobs:
           echo "Generated files:"
           ls -la packages/
 
+      - name: Fix file permissions for container
+        run: |
+          # Ensure proper file permissions for artifact upload
+          if [ -d "packages" ]; then
+            chmod -R 755 packages/
+            find packages/ -type f -exec chmod 644 {} \;
+            
+            # List files with permissions for debugging
+            echo "Package files with permissions:"
+            ls -la packages/
+          fi
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -233,6 +307,9 @@ jobs:
     needs: [validate-and-check, build-packages]
     if: needs.validate-and-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    container:
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      options: --privileged --user root
     permissions:
       contents: write  # Required for creating releases
       id-token: write  # Required for Sigstore verification
@@ -241,6 +318,20 @@ jobs:
       release_url: ${{ steps.release.outputs.release_url }}
       package_urls: ${{ steps.release.outputs.package_urls }}
     steps:
+      - name: Setup container environment
+        run: |
+          # Install essential packages for GitHub Actions
+          dnf update -y
+          dnf install -y git curl jq wget findutils which
+          
+          # Install GitHub CLI
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+          
+          # Set up Git configuration for container
+          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -249,6 +340,20 @@ jobs:
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+
+      - name: Fix downloaded artifact permissions
+        run: |
+          # Fix permissions for downloaded artifacts in container
+          find . -name "*.rpm" -exec chmod 644 {} \; 2>/dev/null || true
+          find . -name "*.sig" -exec chmod 644 {} \; 2>/dev/null || true
+          find . -name "*.crt" -exec chmod 644 {} \; 2>/dev/null || true
+          find . -name "*.txt" -exec chmod 644 {} \; 2>/dev/null || true
+          find . -name "*.json" -exec chmod 644 {} \; 2>/dev/null || true
+          find . -name "*.md" -exec chmod 644 {} \; 2>/dev/null || true
+          
+          # List downloaded artifacts for debugging
+          echo "Downloaded artifacts:"
+          find . -name "*.rpm" -o -name "*.sig" -o -name "*.crt" -o -name "checksums.txt" -o -name "build-info.json" | head -20
 
       - name: Prepare release assets
         id: prepare
@@ -564,7 +669,24 @@ jobs:
     needs: validate-and-check
     if: needs.validate-and-check.outputs.should_build == 'false'
     runs-on: ubuntu-latest
+    container:
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      options: --privileged --user root
     steps:
+      - name: Setup container environment
+        run: |
+          # Install essential packages for GitHub Actions
+          dnf update -y
+          dnf install -y git curl jq wget findutils which
+          
+          # Install GitHub CLI
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+          
+          # Set up Git configuration for container
+          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -593,7 +715,24 @@ jobs:
     needs: [validate-and-check, build-packages, create-release]
     if: always() && (failure() || cancelled())
     runs-on: ubuntu-latest
+    container:
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      options: --privileged --user root
     steps:
+      - name: Setup container environment
+        run: |
+          # Install essential packages for GitHub Actions
+          dnf update -y
+          dnf install -y git curl jq wget findutils which
+          
+          # Install GitHub CLI
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+          
+          # Set up Git configuration for container
+          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
