@@ -47,20 +47,43 @@ detect_os() {
     fi
 }
 
+# Function to optimize package installation
+optimize_package_installation() {
+    local os_type=$(detect_os)
+    
+    case "$os_type" in
+        "ubuntu")
+            # Disable man-db triggers and documentation to speed up installation
+            export DEBIAN_FRONTEND=noninteractive
+            sudo mkdir -p /etc/dpkg/dpkg.cfg.d
+            echo 'path-exclude=/usr/share/man/*' | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null
+            echo 'path-exclude=/usr/share/doc/*' | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null
+            echo 'path-exclude=/usr/share/locale/*' | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null
+            log_info "Optimized package installation for Ubuntu (disabled man-db triggers)"
+            ;;
+        *)
+            log_info "No package installation optimizations needed for $os_type"
+            ;;
+    esac
+}
+
 # Function to install RPM build dependencies
 install_rpm_dependencies() {
     log_info "Installing RPM build dependencies..."
+    
+    # Optimize package installation first
+    optimize_package_installation
     
     local os_type=$(detect_os)
     log_info "Detected OS: $os_type"
     
     case "$os_type" in
         "ubuntu")
-            # Update package manager
+            # Update package manager with optimizations already applied
             sudo apt-get update -y
             
-            # Install core RPM build tools for Ubuntu
-            sudo apt-get install -y \
+            # Install core RPM build tools and Rust dependencies for Ubuntu
+            sudo apt-get install -y --no-install-recommends \
                 rpm \
                 rpmlint \
                 build-essential \
@@ -70,48 +93,18 @@ install_rpm_dependencies() {
                 curl \
                 wget \
                 alien \
-                fakeroot
+                fakeroot \
+                rustc \
+                cargo \
+                tar \
+                gzip \
+                pkg-config \
+                libc6-dev
             
-            log_success "RPM build tools installed (Ubuntu)"
-            ;;
-        "fedora")
-            # Update package manager
-            sudo dnf update -y
-            
-            # Install core RPM build tools
-            sudo dnf install -y \
-                rpm-build \
-                rpm-devel \
-                rpmlint \
-                rpmdevtools \
-                make \
-                gcc \
-                git \
-                curl \
-                wget
-            
-            log_success "RPM build tools installed (Fedora)"
-            ;;
-        "rhel")
-            # Update package manager
-            sudo yum update -y
-            
-            # Install core RPM build tools
-            sudo yum install -y \
-                rpm-build \
-                rpm-devel \
-                rpmlint \
-                rpmdevtools \
-                make \
-                gcc \
-                git \
-                curl \
-                wget
-            
-            log_success "RPM build tools installed (RHEL)"
+            log_success "RPM build tools and Rust installed (Ubuntu)"
             ;;
         *)
-            log_error "Unsupported OS for RPM building: $os_type"
+            log_error "Unsupported OS for RPM building: $os_type (only Ubuntu is supported)"
             return 1
             ;;
     esac
@@ -126,41 +119,19 @@ install_kernel_devel() {
     
     case "$os_type" in
         "ubuntu")
-            # For Ubuntu, we'll install generic kernel headers since we're cross-building
-            log_info "Installing generic kernel headers for Ubuntu (cross-building for Fedora)"
-            sudo apt-get install -y \
+            # For Ubuntu, install kernel headers and additional dependencies for maccel
+            log_info "Installing kernel headers and maccel build dependencies for Ubuntu"
+            sudo apt-get install -y --no-install-recommends \
                 linux-headers-generic \
-                linux-libc-dev
-            log_success "Generic kernel development packages installed"
-            ;;
-        "fedora")
-            # Extract base kernel version (remove architecture)
-            local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
-            
-            # Install kernel-devel for the specific version
-            if sudo dnf install -y "kernel-devel-${base_version}"; then
-                log_success "Kernel development packages installed for $kernel_version"
-            else
-                log_warning "Failed to install exact kernel-devel version, trying generic install..."
-                sudo dnf install -y kernel-devel
-                log_success "Generic kernel-devel installed"
-            fi
-            ;;
-        "rhel")
-            # Extract base kernel version (remove architecture)
-            local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
-            
-            # Install kernel-devel for the specific version
-            if sudo yum install -y "kernel-devel-${base_version}"; then
-                log_success "Kernel development packages installed for $kernel_version"
-            else
-                log_warning "Failed to install exact kernel-devel version, trying generic install..."
-                sudo yum install -y kernel-devel
-                log_success "Generic kernel-devel installed"
-            fi
+                linux-libc-dev \
+                dkms \
+                udev \
+                kmod
+            log_success "Kernel development packages and maccel dependencies installed"
             ;;
         *)
-            log_warning "Skipping kernel-devel installation for unsupported OS: $os_type"
+            log_error "Unsupported OS for kernel development: $os_type (only Ubuntu is supported)"
+            return 1
             ;;
     esac
 }
@@ -209,12 +180,8 @@ setup_rpm_build_tree() {
 %_tmppath $rpmbuild_root/tmp
 EOF
             ;;
-        "fedora"|"rhel")
-            # Use rpmdev-setuptree for Fedora/RHEL
-            rpmdev-setuptree
-            ;;
         *)
-            log_error "Unsupported OS for RPM build tree setup: $os_type"
+            log_error "Unsupported OS for RPM build tree setup: $os_type (only Ubuntu is supported)"
             return 1
             ;;
     esac
