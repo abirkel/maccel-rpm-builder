@@ -39,24 +39,45 @@ jobs:
 
       - name: Validate kernel version format
         run: |
-          if [[ ! "$KERNEL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.fc[0-9]+\.(x86_64|aarch64)$ ]]; then
-            echo "Error: Invalid kernel version format: $KERNEL_VERSION"
-            echo "Expected format: X.Y.Z-REL.fcN.ARCH (e.g., 6.11.5-300.fc41.x86_64)"
-            exit 1
+          # Source error handling library
+          source ./scripts/error-handling.sh
+          setup_error_handling "validate-kernel" "/tmp"
+          
+          # Validate kernel version with comprehensive error handling
+          if ! validate_kernel_version "$KERNEL_VERSION"; then
+            log_critical "Kernel version validation failed" "version=$KERNEL_VERSION"
+            exit 2
           fi
-          echo "Kernel version format is valid: $KERNEL_VERSION"
+          
+          log_info "Kernel version validation passed" "version=$KERNEL_VERSION"
 
       - name: Detect maccel version
         id: version
         run: |
-          echo "Detecting maccel version using detection script..."
+          # Source error handling library
+          source ./scripts/error-handling.sh
+          setup_error_handling "detect-version" "/tmp"
           
-          # Use the dedicated version detection script
-          MACCEL_VERSION=$(./scripts/detect-maccel-version.sh detect)
-          COMMIT_HASH=$(./scripts/detect-maccel-version.sh commit-hash || echo "unknown")
+          log_info "Starting maccel version detection"
           
-          echo "Detected maccel version: $MACCEL_VERSION"
-          echo "Source commit hash: $COMMIT_HASH"
+          # Validate maccel source access first
+          if ! validate_maccel_source_access 3 10; then
+            log_critical "Cannot access maccel source repository" "retries=3"
+            exit 2
+          fi
+          
+          # Use the dedicated version detection script with error handling
+          if ! MACCEL_VERSION=$(execute_with_error_handling "./scripts/detect-maccel-version.sh detect" "Detecting maccel version" 60 2); then
+            log_critical "Failed to detect maccel version" "script=detect-maccel-version.sh"
+            exit 2
+          fi
+          
+          if ! COMMIT_HASH=$(execute_with_error_handling "./scripts/detect-maccel-version.sh commit-hash" "Getting source commit hash" 30 2); then
+            log_warning "Failed to get source commit hash, using fallback" "fallback=unknown"
+            COMMIT_HASH="unknown"
+          fi
+          
+          log_info "Version detection completed successfully" "version=$MACCEL_VERSION, commit=$COMMIT_HASH"
           
           echo "maccel_version=$MACCEL_VERSION" >> $GITHUB_OUTPUT
           echo "source_commit=$COMMIT_HASH" >> $GITHUB_OUTPUT
@@ -66,28 +87,36 @@ jobs:
       - name: Check for existing packages
         id: check
         run: |
-          echo "Checking for existing packages using detection script..."
+          # Source error handling library
+          source ./scripts/error-handling.sh
+          setup_error_handling "check-packages" "/tmp"
           
-          # Use the dedicated package detection script
-          if ./scripts/check-existing-packages.sh check "$KERNEL_VERSION" "${{ steps.version.outputs.maccel_version }}" "$FORCE_REBUILD"; then
-            echo "Packages are up-to-date, skipping build"
+          log_info "Starting package existence check" "kernel=$KERNEL_VERSION, maccel=${{ steps.version.outputs.maccel_version }}, force_rebuild=$FORCE_REBUILD"
+          
+          # Use the dedicated package detection script with error handling
+          if execute_with_error_handling "./scripts/check-existing-packages.sh check '$KERNEL_VERSION' '${{ steps.version.outputs.maccel_version }}' '$FORCE_REBUILD'" "Checking for existing packages" 120 2; then
+            log_info "Packages are up-to-date, skipping build"
             echo "should_build=false" >> $GITHUB_OUTPUT
             
-            # Get existing package information
-            PACKAGE_INFO=$(./scripts/check-existing-packages.sh info "$KERNEL_VERSION" "${{ steps.version.outputs.maccel_version }}")
-            EXISTING_RELEASE=$(echo "$PACKAGE_INFO" | jq -r '.release_tag')
-            echo "existing_release=$EXISTING_RELEASE" >> $GITHUB_OUTPUT
-            
-            # Store package info for later use (escape for GitHub Actions)
-            echo "package_info<<EOF" >> $GITHUB_OUTPUT
-            echo "$PACKAGE_INFO" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            
-            # Output package URLs for reference
-            echo "Existing package URLs:"
-            echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"'
+            # Get existing package information with error handling
+            if PACKAGE_INFO=$(execute_with_error_handling "./scripts/check-existing-packages.sh info '$KERNEL_VERSION' '${{ steps.version.outputs.maccel_version }}'" "Getting package information" 60 2); then
+              EXISTING_RELEASE=$(echo "$PACKAGE_INFO" | jq -r '.release_tag' 2>/dev/null || echo "unknown")
+              echo "existing_release=$EXISTING_RELEASE" >> $GITHUB_OUTPUT
+              
+              # Store package info for later use (escape for GitHub Actions)
+              echo "package_info<<EOF" >> $GITHUB_OUTPUT
+              echo "$PACKAGE_INFO" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              
+              # Output package URLs for reference
+              log_info "Existing package URLs:"
+              echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"' 2>/dev/null || log_warning "Could not parse package URLs"
+            else
+              log_error "Failed to get existing package information"
+              echo "existing_release=unknown" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "Build is required (packages don't exist or source has changed)"
+            log_info "Build is required (packages don't exist or source has changed)"
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "existing_release=" >> $GITHUB_OUTPUT
           fi
@@ -104,19 +133,62 @@ jobs:
     strategy:
       matrix:
         package: [kmod-maccel, maccel]
+      fail-fast: false  # Continue building other packages if one fails
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up build environment
         run: |
-          echo "Setting up build environment for ${{ matrix.package }}"
-          ./scripts/setup-build-environment.sh "$KERNEL_VERSION" "$FEDORA_VERSION" "${{ needs.validate-and-check.outputs.maccel_version }}"
+          # Source error handling library
+          source ./scripts/error-handling.sh
+          setup_error_handling "setup-build-${{ matrix.package }}" "./packages"
+          
+          log_info "Setting up build environment" "package=${{ matrix.package }}, kernel=$KERNEL_VERSION, fedora=$FEDORA_VERSION"
+          
+          # Validate build dependencies first
+          if ! validate_build_dependencies; then
+            log_critical "Build dependencies validation failed"
+            exit 2
+          fi
+          
+          # Set up build environment with timeout and retry
+          if ! execute_with_error_handling "./scripts/setup-build-environment.sh '$KERNEL_VERSION' '$FEDORA_VERSION' '${{ needs.validate-and-check.outputs.maccel_version }}'" "Setting up build environment" 1800 2; then
+            log_critical "Build environment setup failed" "package=${{ matrix.package }}"
+            exit 2
+          fi
+          
+          log_info "Build environment setup completed successfully" "package=${{ matrix.package }}"
 
       - name: Build ${{ matrix.package }} package
         run: |
-          echo "Building ${{ matrix.package }} package"
-          ./scripts/build-packages.sh "${{ matrix.package }}" "$KERNEL_VERSION" "${{ needs.validate-and-check.outputs.maccel_version }}" "$FEDORA_VERSION" "./packages"
+          # Source error handling library
+          source ./scripts/error-handling.sh
+          setup_error_handling "build-${{ matrix.package }}" "./packages"
+          
+          log_info "Starting package build" "package=${{ matrix.package }}, kernel=$KERNEL_VERSION, maccel=${{ needs.validate-and-check.outputs.maccel_version }}"
+          
+          # Create packages directory
+          mkdir -p "./packages"
+          
+          # Build package with comprehensive error handling and extended timeout
+          if ! execute_with_error_handling "./scripts/build-packages.sh '${{ matrix.package }}' '$KERNEL_VERSION' '${{ needs.validate-and-check.outputs.maccel_version }}' '$FEDORA_VERSION' './packages'" "Building ${{ matrix.package }} package" 2400 1; then
+            log_critical "Package build failed" "package=${{ matrix.package }}"
+            
+            # Analyze build failure if build logs exist
+            if [[ -f "./packages/build.log" ]]; then
+              analyze_build_failure "./packages/build.log" "${{ matrix.package }}"
+            fi
+            
+            # Check for common build artifacts to help with debugging
+            log_info "Build directory contents for debugging:"
+            ls -la "./packages/" || true
+            ls -la "$HOME/rpmbuild/BUILD/" || true
+            
+            exit 2
+          fi
+          
+          log_info "Package build completed successfully" "package=${{ matrix.package }}"
 
       - name: Sign and verify packages
         run: |
@@ -451,19 +523,24 @@ jobs:
 
       - name: Report build success
         run: |
-          echo "🎉 Build completed successfully!"
-          echo ""
-          echo "📦 **Release Information:**"
-          echo "- **Tag**: ${{ steps.release.outputs.release_tag }}"
-          echo "- **URL**: ${{ steps.release.outputs.release_url }}"
-          echo "- **Packages**: ${{ steps.prepare.outputs.rpm_count }} RPM files"
-          echo "- **Total Size**: ${{ steps.prepare.outputs.total_size }}"
-          echo ""
-          echo "🔗 **Download URLs:**"
-          echo '${{ steps.release.outputs.package_urls }}' | jq -r '.[] | "- **\(.name)**: \(.url)"'
-          echo ""
-          echo "📋 **For Blue Build Integration:**"
-          echo "Use these stable URLs in your Blue Build recipe files."
+          # Source notification system
+          source ./scripts/build-notifications.sh
+          init_notification_system "build-success" "./packages"
+          
+          # Get build metadata from build-info.json if available
+          BUILD_METADATA="{}"
+          if [[ -f "./release-assets/build-info.json" ]]; then
+            BUILD_METADATA=$(cat "./release-assets/build-info.json")
+          fi
+          
+          # Report successful build with comprehensive information
+          ./scripts/build-notifications.sh success \
+            "${{ steps.release.outputs.release_tag }}" \
+            "${{ steps.release.outputs.release_url }}" \
+            '${{ steps.release.outputs.package_urls }}' \
+            "$BUILD_METADATA"
+          
+          log_info "Build success notification completed" "release=${{ steps.release.outputs.release_tag }}"
 
   report-existing:
     needs: validate-and-check
@@ -472,18 +549,109 @@ jobs:
     steps:
       - name: Report existing packages
         run: |
-          echo "📦 Packages already exist for this configuration"
-          echo "Release: ${{ needs.validate-and-check.outputs.existing_release }}"
-          echo "Packages available at: https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-and-check.outputs.existing_release }}"
-          echo ""
-          echo "Package Download URLs:"
+          # Source notification system
+          source ./scripts/build-notifications.sh
+          init_notification_system "existing-packages" "/tmp"
           
-          # Parse and display package information
+          # Get package information
           PACKAGE_INFO='${{ needs.validate-and-check.outputs.package_info }}'
-          if [[ -n "$PACKAGE_INFO" ]]; then
-            echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"'
-            echo ""
-            echo "Checksums and build metadata are also available in the release."
-          else
-            echo "Package information not available"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-and-check.outputs.existing_release }}"
+          
+          # Report existing packages with comprehensive information
+          ./scripts/build-notifications.sh existing \
+            "${{ needs.validate-and-check.outputs.existing_release }}" \
+            "$RELEASE_URL" \
+            "$PACKAGE_INFO"
+          
+          log_info "Existing packages notification completed" "release=${{ needs.validate-and-check.outputs.existing_release }}"
+
+  report-failure:
+    needs: [validate-and-check, build-packages, create-release]
+    if: always() && (failure() || cancelled())
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Report build failure
+        run: |
+          # Source notification system
+          source ./scripts/build-notifications.sh
+          init_notification_system "build-failure" "/tmp"
+          
+          # Determine failure type and details
+          ERROR_TYPE="UNKNOWN_ERROR"
+          ERROR_MESSAGE="Build process failed"
+          ERROR_DETAILS=""
+          TROUBLESHOOTING=""
+          
+          # Check validation job status
+          if [[ "${{ needs.validate-and-check.result }}" == "failure" ]]; then
+            ERROR_TYPE="VALIDATION_ERROR"
+            ERROR_MESSAGE="Input validation or package check failed"
+            ERROR_DETAILS="The build failed during the validation phase. This could be due to invalid kernel version format, maccel source access issues, or GitHub API problems."
+            TROUBLESHOOTING="- Verify kernel version format: X.Y.Z-REL.fcN.ARCH
+- Check maccel repository accessibility
+- Ensure GitHub token has proper permissions
+- Verify network connectivity"
           fi
+          
+          # Check build job status
+          if [[ "${{ needs.build-packages.result }}" == "failure" ]]; then
+            ERROR_TYPE="BUILD_ERROR"
+            ERROR_MESSAGE="RPM package building failed"
+            ERROR_DETAILS="The build failed during the package compilation phase. This could be due to missing dependencies, compilation errors, or system resource issues."
+            TROUBLESHOOTING="- Check build dependencies (rpm-build, kernel-devel, rust)
+- Verify sufficient disk space and memory
+- Review build logs for specific compilation errors
+- Ensure kernel headers are available for target version"
+          fi
+          
+          # Check release job status
+          if [[ "${{ needs.create-release.result }}" == "failure" ]]; then
+            ERROR_TYPE="RELEASE_ERROR"
+            ERROR_MESSAGE="GitHub release creation failed"
+            ERROR_DETAILS="The build completed successfully but failed to create the GitHub release. This could be due to permissions issues or GitHub API problems."
+            TROUBLESHOOTING="- Verify GitHub token has write permissions to repository
+- Check GitHub API status and rate limits
+- Ensure release tag doesn't already exist
+- Review GitHub Actions permissions settings"
+          fi
+          
+          # Check for cancellation
+          if [[ "${{ needs.validate-and-check.result }}" == "cancelled" || "${{ needs.build-packages.result }}" == "cancelled" || "${{ needs.create-release.result }}" == "cancelled" ]]; then
+            ERROR_TYPE="BUILD_CANCELLED"
+            ERROR_MESSAGE="Build process was cancelled"
+            ERROR_DETAILS="The build was cancelled before completion. This could be due to timeout, manual cancellation, or system issues."
+            TROUBLESHOOTING="- Check for build timeout (default: 1 hour)
+- Verify system resources and stability
+- Review workflow logs for cancellation reason
+- Retry the build if cancellation was unintentional"
+          fi
+          
+          # Create detailed error report
+          ./scripts/build-notifications.sh error-report "$ERROR_TYPE" "/tmp" "/tmp/error-report.json"
+          
+          # Report the failure with comprehensive information
+          ./scripts/build-notifications.sh failure \
+            "$ERROR_TYPE" \
+            "$ERROR_MESSAGE" \
+            "$ERROR_DETAILS" \
+            "$TROUBLESHOOTING"
+          
+          log_error "Build failure notification completed" "type=$ERROR_TYPE"
+          
+          # Upload error report as artifact for debugging
+          if [[ -f "/tmp/error-report.json" ]]; then
+            echo "Error report created at /tmp/error-report.json"
+          fi
+
+      - name: Upload error report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-report-${{ github.run_id }}
+          path: |
+            /tmp/error-report.json
+            /tmp/maccel-build-*.log
+          retention-days: 30

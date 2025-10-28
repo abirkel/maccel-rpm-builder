@@ -125,13 +125,6 @@ cosign verify-blob --signature kmod-maccel-VERSION.rpm.sig --certificate kmod-ma
   kmod-maccel-VERSION.rpm
 ```
 
-### Verification Features
-
-- **🔐 Keyless Signing**: No key management required - uses GitHub OIDC identity
-- **🌐 Transparency**: All signatures logged in public Rekor transparency log
-- **⏰ Short-lived Certificates**: No long-term key compromise risk
-- **📋 Cryptographic Proof**: Verifiable identity and build provenance
-
 ### Additional Verification
 
 Each release also includes:
@@ -139,10 +132,6 @@ Each release also includes:
 - `build-info.json` - Build metadata including source commit hashes
 - `PACKAGE_VERIFICATION.md` - Comprehensive verification guide
 - `sigstore-info.txt` - Detailed Sigstore verification instructions
-
-## Development
-
-This repository follows the spec-driven development approach. See the [specification documents](.kiro/specs/rpm-packaging/) for detailed requirements and design.
 
 ## License
 
