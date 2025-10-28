@@ -284,7 +284,8 @@ build_maccel_package() {
     
     # Build the package
     log_info "Running rpmbuild for maccel..."
-    if rpmbuild -ba "$RPMBUILD_ROOT/SPECS/maccel.spec"; then
+    # Use --nodeps since we ensure dependencies are satisfied by build environment setup
+    if rpmbuild --nodeps -ba "$RPMBUILD_ROOT/SPECS/maccel.spec"; then
         log_success "maccel package built successfully"
     else
         log_error "Failed to build maccel package"

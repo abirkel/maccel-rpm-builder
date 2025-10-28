@@ -47,6 +47,8 @@ detect_os() {
     fi
 }
 
+
+
 # Function to optimize package installation
 optimize_package_installation() {
     local os_type=$(detect_os)
@@ -82,7 +84,7 @@ install_rpm_dependencies() {
             # Update package manager with optimizations already applied
             sudo apt-get update -y
             
-            # Install core RPM build tools and Rust dependencies for Ubuntu
+            # Install all dependencies in a single command for efficiency
             sudo apt-get install -y --no-install-recommends \
                 rpm \
                 rpmlint \
@@ -100,9 +102,13 @@ install_rpm_dependencies() {
                 gzip \
                 pkg-config \
                 libc6-dev \
-                jq
+                jq \
+                linux-headers-generic \
+                linux-libc-dev \
+                udev \
+                kmod
             
-            log_success "RPM build tools and Rust installed (Ubuntu)"
+            log_success "RPM build tools, Rust, and kernel development packages installed (Ubuntu)"
             ;;
         *)
             log_error "Unsupported OS for RPM building: $os_type (only Ubuntu is supported)"
@@ -120,14 +126,9 @@ install_kernel_devel() {
     
     case "$os_type" in
         "ubuntu")
-            # For Ubuntu, install kernel headers and additional dependencies for maccel
-            log_info "Installing kernel headers and maccel build dependencies for Ubuntu"
-            sudo apt-get install -y --no-install-recommends \
-                linux-headers-generic \
-                linux-libc-dev \
-                udev \
-                kmod
-            log_success "Kernel development packages and maccel dependencies installed"
+            # Kernel development packages are now installed with RPM dependencies
+            # This function is kept for compatibility but does nothing on Ubuntu
+            log_info "Kernel development packages already installed with RPM dependencies"
             ;;
         *)
             log_error "Unsupported OS for kernel development: $os_type (only Ubuntu is supported)"

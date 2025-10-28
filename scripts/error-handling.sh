@@ -168,13 +168,20 @@ check_kernel_devel_availability() {
     local kernel_version="$1"
     local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
     
-    # Try to query package availability (non-blocking)
-    if timeout 30 dnf list available "kernel-devel-${base_version}" >/dev/null 2>&1; then
-        log_info "kernel-devel package is available" "version=$base_version"
-        return 0
+    # Check if we're on a system that uses dnf
+    if command -v dnf >/dev/null 2>&1; then
+        # Try to query package availability (non-blocking)
+        if timeout 30 dnf list available "kernel-devel-${base_version}" >/dev/null 2>&1; then
+            log_info "kernel-devel package is available" "version=$base_version"
+            return 0
+        else
+            log_warning "kernel-devel package availability check failed" "version=$base_version, timeout=30s"
+            return 1
+        fi
     else
-        log_warning "kernel-devel package availability check failed" "version=$base_version, timeout=30s"
-        return 1
+        # On Ubuntu/Debian systems, we use linux-headers-generic instead
+        log_info "Using linux-headers-generic for kernel development on this system"
+        return 0
     fi
 }
 
