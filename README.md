@@ -47,8 +47,10 @@ https://github.com/USERNAME/maccel-rpm-builder/releases/download/kernel-6.11.5-3
 ## Efficiency Features
 
 - **Smart caching**: Skips builds if packages already exist for the kernel version
+- **Source change detection**: Compares maccel source commit hashes to avoid unnecessary rebuilds
 - **Version detection**: Automatically detects latest maccel version from upstream
 - **Build optimization**: Caches dependencies between builds
+- **Existing package detection**: Returns URLs to existing packages when builds are skipped
 
 ## Integration
 
@@ -66,6 +68,37 @@ This builder is designed to integrate with Blue Build workflows. See the [MyAuro
     "force_rebuild": false
   }
 }
+```
+
+### Force Rebuild
+
+Set `force_rebuild: true` to rebuild packages even if they already exist for the kernel version. This is useful when you need to rebuild with updated dependencies or build environment changes.
+
+## Package Detection
+
+The system includes intelligent package detection that:
+
+1. **Checks for existing releases** matching the kernel version and maccel version
+2. **Compares source commit hashes** to detect if maccel source code has changed
+3. **Skips unnecessary builds** and returns existing package URLs
+4. **Provides detailed package information** including download URLs and metadata
+
+### Manual Package Detection
+
+You can manually check for existing packages using the detection script:
+
+```bash
+# Check if packages exist for a kernel version
+./scripts/check-existing-packages.sh check 6.11.5-300.fc41.x86_64
+
+# Get information about existing packages
+./scripts/check-existing-packages.sh info 6.11.5-300.fc41.x86_64
+
+# List all releases for a kernel version pattern
+./scripts/check-existing-packages.sh list 6.11.5-300.fc41.x86_64
+
+# Generate release tag name
+./scripts/check-existing-packages.sh release-tag 6.11.5-300.fc41.x86_64 1.0.0
 ```
 
 ## Development

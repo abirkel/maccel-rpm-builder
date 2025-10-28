@@ -32,6 +32,7 @@ jobs:
       should_build: ${{ steps.check.outputs.should_build }}
       maccel_version: ${{ steps.version.outputs.maccel_version }}
       existing_release: ${{ steps.check.outputs.existing_release }}
+      package_info: ${{ steps.check.outputs.package_info }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -65,21 +66,28 @@ jobs:
       - name: Check for existing packages
         id: check
         run: |
-          RELEASE_TAG="kernel-${KERNEL_VERSION}-maccel-${{ steps.version.outputs.maccel_version }}"
-          echo "Checking for existing release: $RELEASE_TAG"
+          echo "Checking for existing packages using detection script..."
           
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists"
-            if [[ "$FORCE_REBUILD" == "true" ]]; then
-              echo "Force rebuild requested, will rebuild packages"
-              echo "should_build=true" >> $GITHUB_OUTPUT
-            else
-              echo "Packages already exist, skipping build"
-              echo "should_build=false" >> $GITHUB_OUTPUT
-            fi
-            echo "existing_release=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          # Use the dedicated package detection script
+          if ./scripts/check-existing-packages.sh check "$KERNEL_VERSION" "${{ steps.version.outputs.maccel_version }}" "$FORCE_REBUILD"; then
+            echo "Packages are up-to-date, skipping build"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            
+            # Get existing package information
+            PACKAGE_INFO=$(./scripts/check-existing-packages.sh info "$KERNEL_VERSION" "${{ steps.version.outputs.maccel_version }}")
+            EXISTING_RELEASE=$(echo "$PACKAGE_INFO" | jq -r '.release_tag')
+            echo "existing_release=$EXISTING_RELEASE" >> $GITHUB_OUTPUT
+            
+            # Store package info for later use (escape for GitHub Actions)
+            echo "package_info<<EOF" >> $GITHUB_OUTPUT
+            echo "$PACKAGE_INFO" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            
+            # Output package URLs for reference
+            echo "Existing package URLs:"
+            echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"'
           else
-            echo "Release $RELEASE_TAG does not exist, will build packages"
+            echo "Build is required (packages don't exist or source has changed)"
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "existing_release=" >> $GITHUB_OUTPUT
           fi
@@ -139,32 +147,37 @@ jobs:
           find . -name "checksums.txt" -exec cp {} . \;
           find . -name "build-info.json" -exec cp {} . \;
           
+          # Create release notes
+          cat > release_notes.md << 'EOF'
+          RPM packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }} built for kernel $KERNEL_VERSION
+
+          ## Package Information
+          - **Kernel Version**: $KERNEL_VERSION
+          - **Maccel Version**: ${{ needs.validate-and-check.outputs.maccel_version }}
+          - **Source Commit**: ${{ needs.validate-and-check.outputs.source_commit }}
+          - **Build Date**: $(date -u +%Y-%m-%d)
+
+          ## Packages Included
+          - `kmod-maccel`: Kernel module for maccel driver
+          - `maccel`: Userspace CLI tools and configuration
+
+          ## Installation
+          Download the RPM packages and install with:
+          ```bash
+          sudo dnf install ./kmod-maccel-*.rpm ./maccel-*.rpm
+          ```
+
+          ## Verification
+          Package checksums are included in `checksums.txt`. Verify with:
+          ```bash
+          sha256sum -c checksums.txt
+          ```
+          EOF
+          
           # Create release with packages and metadata
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_NAME" \
-            --notes "RPM packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }} built for kernel $KERNEL_VERSION
-
-## Package Information
-- **Kernel Version**: $KERNEL_VERSION
-- **Maccel Version**: ${{ needs.validate-and-check.outputs.maccel_version }}
-- **Source Commit**: ${{ needs.validate-and-check.outputs.source_commit }}
-- **Build Date**: $(date -u +%Y-%m-%d)
-
-## Packages Included
-- \`kmod-maccel\`: Kernel module for maccel driver
-- \`maccel\`: Userspace CLI tools and configuration
-
-## Installation
-Download the RPM packages and install with:
-\`\`\`bash
-sudo dnf install ./kmod-maccel-*.rpm ./maccel-*.rpm
-\`\`\`
-
-## Verification
-Package checksums are included in \`checksums.txt\`. Verify with:
-\`\`\`bash
-sha256sum -c checksums.txt
-\`\`\`" \
+            --notes-file release_notes.md \
             --latest=false \
             *.rpm checksums.txt build-info.json
         env:
@@ -187,3 +200,15 @@ sha256sum -c checksums.txt
           echo "📦 Packages already exist for this configuration"
           echo "Release: ${{ needs.validate-and-check.outputs.existing_release }}"
           echo "Packages available at: https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-and-check.outputs.existing_release }}"
+          echo ""
+          echo "Package Download URLs:"
+          
+          # Parse and display package information
+          PACKAGE_INFO='${{ needs.validate-and-check.outputs.package_info }}'
+          if [[ -n "$PACKAGE_INFO" ]]; then
+            echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"'
+            echo ""
+            echo "Checksums and build metadata are also available in the release."
+          else
+            echo "Package information not available"
+          fi
