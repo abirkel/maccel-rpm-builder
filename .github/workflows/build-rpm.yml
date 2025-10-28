@@ -1,0 +1,168 @@
+name: Build RPM Packages
+
+on:
+  repository_dispatch:
+    types: [build-for-kernel]
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: 'Kernel version (e.g., 6.11.5-300.fc41.x86_64)'
+        required: true
+        type: string
+      fedora_version:
+        description: 'Fedora version (e.g., 41)'
+        required: true
+        type: string
+      force_rebuild:
+        description: 'Force rebuild even if packages exist'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  KERNEL_VERSION: ${{ github.event.client_payload.kernel_version || inputs.kernel_version }}
+  FEDORA_VERSION: ${{ github.event.client_payload.fedora_version || inputs.fedora_version }}
+  TRIGGER_REPO: ${{ github.event.client_payload.trigger_repo || 'manual' }}
+  FORCE_REBUILD: ${{ github.event.client_payload.force_rebuild || inputs.force_rebuild || false }}
+
+jobs:
+  validate-and-check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      maccel_version: ${{ steps.version.outputs.maccel_version }}
+      existing_release: ${{ steps.check.outputs.existing_release }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate kernel version format
+        run: |
+          if [[ ! "$KERNEL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.fc[0-9]+\.(x86_64|aarch64)$ ]]; then
+            echo "Error: Invalid kernel version format: $KERNEL_VERSION"
+            echo "Expected format: X.Y.Z-REL.fcN.ARCH (e.g., 6.11.5-300.fc41.x86_64)"
+            exit 1
+          fi
+          echo "Kernel version format is valid: $KERNEL_VERSION"
+
+      - name: Detect maccel version
+        id: version
+        run: |
+          echo "Detecting maccel version..."
+          
+          # Method 1: Git release tags (preferred)
+          MACCEL_VERSION=$(gh api repos/Gnarus-G/maccel/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^v//') || true
+          
+          if [[ -z "$MACCEL_VERSION" ]]; then
+            echo "No release tags found, trying Cargo.toml..."
+            # Method 2: Cargo.toml version (fallback)
+            MACCEL_VERSION=$(curl -s https://raw.githubusercontent.com/Gnarus-G/maccel/main/Cargo.toml | grep '^version = ' | head -1 | cut -d'"' -f2) || true
+          fi
+          
+          if [[ -z "$MACCEL_VERSION" ]]; then
+            echo "Cargo.toml version not found, using commit hash..."
+            # Method 3: Git commit hash (final fallback)
+            COMMIT_HASH=$(curl -s https://api.github.com/repos/Gnarus-G/maccel/commits/main | jq -r '.sha[:7]')
+            MACCEL_VERSION="0.0.0+${COMMIT_HASH}"
+          fi
+          
+          echo "Detected maccel version: $MACCEL_VERSION"
+          echo "maccel_version=$MACCEL_VERSION" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check for existing packages
+        id: check
+        run: |
+          RELEASE_TAG="kernel-${KERNEL_VERSION}-maccel-${{ steps.version.outputs.maccel_version }}"
+          echo "Checking for existing release: $RELEASE_TAG"
+          
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
+            if [[ "$FORCE_REBUILD" == "true" ]]; then
+              echo "Force rebuild requested, will rebuild packages"
+              echo "should_build=true" >> $GITHUB_OUTPUT
+            else
+              echo "Packages already exist, skipping build"
+              echo "should_build=false" >> $GITHUB_OUTPUT
+            fi
+            echo "existing_release=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          else
+            echo "Release $RELEASE_TAG does not exist, will build packages"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "existing_release=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  build-packages:
+    needs: validate-and-check
+    if: needs.validate-and-check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [kmod-maccel, maccel]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up build environment
+        run: |
+          echo "Setting up build environment for ${{ matrix.package }}"
+          # This will be implemented in task 3.2
+
+      - name: Build ${{ matrix.package }} package
+        run: |
+          echo "Building ${{ matrix.package }} package"
+          # This will be implemented in task 3.4
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}-${{ env.KERNEL_VERSION }}
+          path: "*.rpm"
+
+  create-release:
+    needs: [validate-and-check, build-packages]
+    if: needs.validate-and-check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub release
+        run: |
+          RELEASE_TAG="kernel-${KERNEL_VERSION}-maccel-${{ needs.validate-and-check.outputs.maccel_version }}"
+          RELEASE_NAME="Kernel ${KERNEL_VERSION} - maccel ${{ needs.validate-and-check.outputs.maccel_version }}"
+          
+          echo "Creating release: $RELEASE_TAG"
+          
+          # Create release with packages
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_NAME" \
+            --notes "RPM packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }} built for kernel $KERNEL_VERSION" \
+            --latest=false \
+            */*.rpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Report build success
+        run: |
+          RELEASE_TAG="kernel-${KERNEL_VERSION}-maccel-${{ needs.validate-and-check.outputs.maccel_version }}"
+          echo "✅ Build completed successfully!"
+          echo "Release: $RELEASE_TAG"
+          echo "Packages available at: https://github.com/${{ github.repository }}/releases/tag/$RELEASE_TAG"
+
+  report-existing:
+    needs: validate-and-check
+    if: needs.validate-and-check.outputs.should_build == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report existing packages
+        run: |
+          echo "📦 Packages already exist for this configuration"
+          echo "Release: ${{ needs.validate-and-check.outputs.existing_release }}"
+          echo "Packages available at: https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-and-check.outputs.existing_release }}"

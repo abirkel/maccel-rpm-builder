@@ -1,0 +1,39 @@
+name: Test Repository Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: 'Test kernel version'
+        required: false
+        default: '6.11.5-300.fc41.x86_64'
+        type: string
+      fedora_version:
+        description: 'Test Fedora version'
+        required: false
+        default: '41'
+        type: string
+
+jobs:
+  test-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test repository dispatch trigger
+        run: |
+          echo "🧪 Testing repository dispatch mechanism"
+          echo "Kernel Version: ${{ inputs.kernel_version }}"
+          echo "Fedora Version: ${{ inputs.fedora_version }}"
+          
+          # Send repository dispatch to self
+          gh api repos/${{ github.repository }}/dispatches \
+            --method POST \
+            --field event_type=build-for-kernel \
+            --field client_payload="{\"kernel_version\":\"${{ inputs.kernel_version }}\",\"fedora_version\":\"${{ inputs.fedora_version }}\",\"trigger_repo\":\"test-dispatch-workflow\"}"
+          
+          echo "✅ Repository dispatch sent successfully"
+          echo "Check the 'Build RPM Packages' workflow for results"
+        env:
+          GH_TOKEN: ${{ github.token }}
