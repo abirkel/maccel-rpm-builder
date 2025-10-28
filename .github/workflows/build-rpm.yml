@@ -99,29 +99,36 @@ jobs:
           log_info "Starting package existence check" "kernel=$KERNEL_VERSION, maccel=${{ steps.version.outputs.maccel_version }}, force_rebuild=$FORCE_REBUILD"
           
           # Use the dedicated package detection script with error handling
-          if execute_with_error_handling "./scripts/check-existing-packages.sh check '$KERNEL_VERSION' '${{ steps.version.outputs.maccel_version }}' '$FORCE_REBUILD'" "Checking for existing packages" 120 2; then
-            log_info "Packages are up-to-date, skipping build"
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            
-            # Get existing package information with error handling
-            if PACKAGE_INFO=$(execute_with_error_handling "./scripts/check-existing-packages.sh info '$KERNEL_VERSION' '${{ steps.version.outputs.maccel_version }}'" "Getting package information" 60 2); then
-              EXISTING_RELEASE=$(echo "$PACKAGE_INFO" | jq -r '.release_tag' 2>/dev/null || echo "unknown")
-              echo "existing_release=$EXISTING_RELEASE" >> $GITHUB_OUTPUT
+          if CHECK_RESULT=$(execute_with_error_handling "./scripts/check-existing-packages.sh check '$KERNEL_VERSION' '${{ steps.version.outputs.maccel_version }}' '$FORCE_REBUILD'" "Checking for existing packages" 120 2); then
+            # Check the actual result, not just exit code
+            if [[ "$CHECK_RESULT" == "BUILD_SKIP" ]]; then
+              log_info "Packages are up-to-date, skipping build"
+              echo "should_build=false" >> $GITHUB_OUTPUT
               
-              # Store package info for later use (escape for GitHub Actions)
-              echo "package_info<<EOF" >> $GITHUB_OUTPUT
-              echo "$PACKAGE_INFO" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
-              
-              # Output package URLs for reference
-              log_info "Existing package URLs:"
-              echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"' 2>/dev/null || log_warning "Could not parse package URLs"
+              # Get existing package information with error handling
+              if PACKAGE_INFO=$(execute_with_error_handling "./scripts/check-existing-packages.sh info '$KERNEL_VERSION' '${{ steps.version.outputs.maccel_version }}'" "Getting package information" 60 2); then
+                EXISTING_RELEASE=$(echo "$PACKAGE_INFO" | jq -r '.release_tag' 2>/dev/null || echo "unknown")
+                echo "existing_release=$EXISTING_RELEASE" >> $GITHUB_OUTPUT
+                
+                # Store package info for later use (escape for GitHub Actions)
+                echo "package_info<<EOF" >> $GITHUB_OUTPUT
+                echo "$PACKAGE_INFO" >> $GITHUB_OUTPUT
+                echo "EOF" >> $GITHUB_OUTPUT
+                
+                # Output package URLs for reference
+                log_info "Existing package URLs:"
+                echo "$PACKAGE_INFO" | jq -r '.packages[] | "- \(.name): \(.url)"' 2>/dev/null || log_warning "Could not parse package URLs"
+              else
+                log_error "Failed to get existing package information"
+                echo "existing_release=unknown" >> $GITHUB_OUTPUT
+              fi
             else
-              log_error "Failed to get existing package information"
-              echo "existing_release=unknown" >> $GITHUB_OUTPUT
+              log_info "Build is required (packages don't exist or source has changed)"
+              echo "should_build=true" >> $GITHUB_OUTPUT
+              echo "existing_release=" >> $GITHUB_OUTPUT
             fi
           else
-            log_info "Build is required (packages don't exist or source has changed)"
+            log_error "Package check failed completely"
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "existing_release=" >> $GITHUB_OUTPUT
           fi
