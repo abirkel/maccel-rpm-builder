@@ -102,6 +102,7 @@ install_rpm_dependencies() {
                 gzip \
                 pkg-config \
                 libc6-dev \
+                libelf-dev \
                 jq \
                 linux-headers-generic \
                 linux-libc-dev \
@@ -265,9 +266,18 @@ validate_build_environment() {
         ((errors++))
     fi
     
-    # Check kernel headers
-    if [[ ! -d "/usr/src/kernels" ]] || [[ -z "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
-        log_warning "Kernel headers directory is empty or missing"
+    # Check kernel headers (location varies by OS)
+    local os_type=$(detect_os)
+    if [[ "$os_type" == "ubuntu" ]]; then
+        # On Ubuntu, kernel headers are in /usr/src/linux-headers-*
+        if [[ ! -d "/usr/src" ]] || [[ -z "$(ls -d /usr/src/linux-headers-* 2>/dev/null)" ]]; then
+            log_warning "Kernel headers directory is empty or missing"
+        fi
+    else
+        # On Fedora/RHEL, kernel headers are in /usr/src/kernels
+        if [[ ! -d "/usr/src/kernels" ]] || [[ -z "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
+            log_warning "Kernel headers directory is empty or missing"
+        fi
     fi
     
     if [[ $errors -eq 0 ]]; then

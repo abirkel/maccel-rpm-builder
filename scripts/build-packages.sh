@@ -260,7 +260,8 @@ build_kmod_package() {
     
     # Build the package
     log_info "Running rpmbuild for kmod-maccel..."
-    if rpmbuild -ba "$RPMBUILD_ROOT/SPECS/kmod-maccel.spec"; then
+    # Use --nodeps since we ensure dependencies are satisfied by build environment setup
+    if rpmbuild --nodeps -ba "$RPMBUILD_ROOT/SPECS/kmod-maccel.spec"; then
         log_success "kmod-maccel package built successfully"
     else
         log_error "Failed to build kmod-maccel package"
