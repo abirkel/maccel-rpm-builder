@@ -46,12 +46,12 @@ cleanup() {
 # Set up cleanup trap
 trap cleanup EXIT
 
-# Function to download and prepare maccel source code
+# Function to download and prepare maccel source code for Fedora environment
 download_maccel_source() {
     local maccel_version="$1"
     local target_commit="${2:-}"
     
-    log_info "Downloading maccel source code..."
+    log_info "Downloading maccel source code for Fedora container environment..."
     
     # Clean up any existing work directory
     rm -rf "$WORK_DIR"
@@ -78,7 +78,7 @@ download_maccel_source() {
         fi
     fi
     
-    # Verify we have the expected structure
+    # Verify we have the expected structure for Fedora builds
     if [[ ! -d "driver" || ! -f "driver/Makefile" ]]; then
         log_error "Expected driver directory with Makefile not found"
         return 1
@@ -99,31 +99,71 @@ download_maccel_source() {
         return 1
     fi
     
-    # Verify workspace structure
+    # Verify workspace structure for cargo workspace build
     if ! grep -q 'members.*=.*\["cli"' Cargo.toml; then
         log_error "Expected workspace structure not found in Cargo.toml"
         return 1
     fi
     
-    log_success "Maccel source code downloaded and prepared"
+    # Prepare Fedora-specific build environment
+    log_info "Preparing source for Fedora container build environment..."
+    
+    # Set up cargo environment for Fedora container
+    export CARGO_HOME="$(pwd)/.cargo"
+    export CC=gcc
+    export CXX=g++
+    
+    # Verify cc build dependency can be handled in Fedora environment
+    if grep -q "cc.*=" cli/Cargo.toml || grep -q "cc.*=" Cargo.toml; then
+        log_info "Detected cc build dependency - will use Fedora's gcc toolchain"
+    fi
+    
+    log_success "Maccel source code downloaded and prepared for Fedora environment"
     return 0
 }
 
-# Function to prepare RPM sources
+# Function to prepare RPM sources for Fedora container environment
 prepare_rpm_sources() {
     local maccel_version="$1"
     local package_name="$2"
     
-    log_info "Preparing RPM sources for $package_name..."
+    log_info "Preparing RPM sources for $package_name in Fedora container environment..."
     
-    # Create source tarball
+    # Create source tarball with proper structure for Fedora builds
     local source_dir="maccel-${maccel_version}"
     local tarball_name="${source_dir}.tar.gz"
     
     cd "$WORK_DIR"
     
-    # Copy source to versioned directory
+    # Copy source to versioned directory, preserving structure for Fedora builds
     cp -r maccel "$source_dir"
+    
+    # Ensure proper permissions for Fedora container environment
+    find "$source_dir" -type f -name "*.rs" -exec chmod 644 {} \;
+    find "$source_dir" -type f -name "Makefile" -exec chmod 644 {} \;
+    find "$source_dir" -type f -name "Cargo.toml" -exec chmod 644 {} \;
+    find "$source_dir" -type f -name "*.rules" -exec chmod 644 {} \;
+    
+    # Verify critical files for Fedora builds
+    if [[ "$package_name" == "kmod-maccel" ]]; then
+        if [[ ! -f "$source_dir/driver/Makefile" ]]; then
+            log_error "Kernel module Makefile not found for Fedora build"
+            return 1
+        fi
+        log_info "Verified driver/Makefile for Fedora kernel module build"
+    fi
+    
+    if [[ "$package_name" == "maccel" ]]; then
+        if [[ ! -f "$source_dir/Cargo.toml" ]] || [[ ! -f "$source_dir/cli/Cargo.toml" ]]; then
+            log_error "Cargo workspace files not found for Fedora Rust build"
+            return 1
+        fi
+        if [[ ! -f "$source_dir/udev_rules/99-maccel.rules" ]]; then
+            log_error "Udev rules file not found for Fedora installation"
+            return 1
+        fi
+        log_info "Verified cargo workspace and udev rules for Fedora build"
+    fi
     
     # Create tarball
     tar -czf "$tarball_name" "$source_dir"
@@ -136,13 +176,13 @@ prepare_rpm_sources() {
     local repo_spec_file="$REPO_ROOT/${spec_file}"
     if [[ -f "$repo_spec_file" ]]; then
         cp "$repo_spec_file" "$RPMBUILD_ROOT/SPECS/"
-        log_success "Spec file copied: $spec_file"
+        log_success "Spec file copied for Fedora build: $spec_file"
     else
         log_error "Spec file not found: $repo_spec_file"
         return 1
     fi
     
-    log_success "RPM sources prepared for $package_name"
+    log_success "RPM sources prepared for $package_name in Fedora container environment"
 }
 
 # Function to get upstream release notes
@@ -255,13 +295,13 @@ substitute_spec_variables() {
     log_success "Variables and changelog substituted in $package_name spec file"
 }
 
-# Function to build kernel module package
+# Function to build kernel module package using Fedora kernel-devel packages
 build_kmod_package() {
     local kernel_version="$1"
     local maccel_version="$2"
     local fedora_version="$3"
     
-    log_info "Building kmod-maccel package..."
+    log_info "Building kmod-maccel package using Fedora kernel-devel packages..."
     
     # Prepare sources
     prepare_rpm_sources "$maccel_version" "kmod-maccel"
@@ -269,24 +309,43 @@ build_kmod_package() {
     # Substitute variables in spec file
     substitute_spec_variables "kmod-maccel" "$kernel_version" "$maccel_version" "$fedora_version"
     
-    # Build the package
-    log_info "Running rpmbuild for kmod-maccel..."
-    # Use --nodeps since we ensure dependencies are satisfied by build environment setup
-    if rpmbuild --nodeps -ba "$RPMBUILD_ROOT/SPECS/kmod-maccel.spec"; then
-        log_success "kmod-maccel package built successfully"
+    # Verify kernel headers are available for the build
+    local kernel_headers_dir="/usr/src/kernels"
+    if [[ ! -d "$kernel_headers_dir" ]] || [[ -z "$(ls -A $kernel_headers_dir 2>/dev/null)" ]]; then
+        log_error "Kernel headers not found in $kernel_headers_dir"
+        log_error "Ensure kernel-devel package is installed for kernel version $kernel_version"
+        return 1
+    fi
+    
+    log_info "Available kernel headers: $(ls -1 $kernel_headers_dir | tr '\n' ' ')"
+    
+    # Build the package using Fedora's native kernel build system
+    log_info "Running rpmbuild for kmod-maccel with Fedora kernel-devel packages..."
+    
+    # Set environment variables for kernel module build
+    export KDIR="$kernel_headers_dir/$kernel_version"
+    if [[ ! -d "$KDIR" ]]; then
+        # Try to find the closest matching kernel headers
+        local available_kernel=$(ls -1 $kernel_headers_dir | head -1)
+        log_warning "Exact kernel headers not found, using: $available_kernel"
+        export KDIR="$kernel_headers_dir/$available_kernel"
+    fi
+    
+    if rpmbuild -ba "$RPMBUILD_ROOT/SPECS/kmod-maccel.spec"; then
+        log_success "kmod-maccel package built successfully using Fedora kernel-devel"
     else
         log_error "Failed to build kmod-maccel package"
         return 1
     fi
 }
 
-# Function to build userspace tools package
+# Function to build userspace tools package using Fedora's Rust toolchain
 build_maccel_package() {
     local kernel_version="$1"
     local maccel_version="$2"
     local fedora_version="$3"
     
-    log_info "Building maccel package..."
+    log_info "Building maccel package using Fedora's native Rust toolchain..."
     
     # Prepare sources
     prepare_rpm_sources "$maccel_version" "maccel"
@@ -294,11 +353,33 @@ build_maccel_package() {
     # Substitute variables in spec file
     substitute_spec_variables "maccel" "$kernel_version" "$maccel_version" "$fedora_version"
     
-    # Build the package
-    log_info "Running rpmbuild for maccel..."
-    # Use --nodeps since we ensure dependencies are satisfied by build environment setup
-    if rpmbuild --nodeps -ba "$RPMBUILD_ROOT/SPECS/maccel.spec"; then
-        log_success "maccel package built successfully"
+    # Verify Rust toolchain is available
+    if ! command -v rustc >/dev/null 2>&1 || ! command -v cargo >/dev/null 2>&1; then
+        log_error "Rust toolchain not found - ensure rust and cargo packages are installed"
+        return 1
+    fi
+    
+    log_info "Using Rust toolchain: $(rustc --version)"
+    log_info "Using Cargo: $(cargo --version)"
+    
+    # Verify udev rules file exists for Fedora installation
+    local source_dir="$WORK_DIR/maccel"
+    if [[ ! -f "$source_dir/udev_rules/99-maccel.rules" ]]; then
+        log_error "Udev rules file not found: $source_dir/udev_rules/99-maccel.rules"
+        return 1
+    fi
+    
+    # Set up environment for cargo workspace build with cc dependency handling
+    export CARGO_HOME="$WORK_DIR/.cargo"
+    export CC=gcc
+    export CXX=g++
+    export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/share/pkgconfig"
+    
+    # Build the package using Fedora's Rust toolchain
+    log_info "Running rpmbuild for maccel with cargo workspace build..."
+    
+    if rpmbuild -ba "$RPMBUILD_ROOT/SPECS/maccel.spec"; then
+        log_success "maccel package built successfully using Fedora Rust toolchain"
     else
         log_error "Failed to build maccel package"
         return 1
@@ -316,49 +397,77 @@ generate_package_filename() {
     echo "${package_name}-${version}-${release}.fc${fedora_version}.${arch}.rpm"
 }
 
-# Function to copy built packages to output directory
+# Function to copy built packages from Fedora container build
 copy_built_packages() {
     local kernel_version="$1"
     local maccel_version="$2"
     local fedora_version="$3"
     local output_dir="${4:-$PWD}"
     
-    log_info "Copying built packages to output directory..."
+    log_info "Copying built packages from Fedora container build to output directory..."
     
-    # Extract architecture from kernel version
+    # Extract architecture from kernel version for Fedora package naming
     local arch="x86_64"  # Default
     if [[ "$kernel_version" =~ \.([^.]+)$ ]]; then
         arch="${BASH_REMATCH[1]}"
     fi
     
-    # Define package filenames
+    # Define package filenames following Fedora conventions
     local release="1"  # Default release number
     local kmod_filename=$(generate_package_filename "kmod-maccel" "$maccel_version" "$release" "$fedora_version" "$arch")
     local maccel_filename=$(generate_package_filename "maccel" "$maccel_version" "$release" "$fedora_version" "$arch")
     
-    # Copy packages from RPM build directory
+    # Copy packages from RPM build directory (Fedora-specific paths)
     local rpm_arch_dir="$RPMBUILD_ROOT/RPMS/$arch"
     
+    log_info "Looking for packages in: $rpm_arch_dir"
+    log_info "Expected kmod package: $kmod_filename"
+    log_info "Expected maccel package: $maccel_filename"
+    
+    # List available packages for debugging
+    if [[ -d "$rpm_arch_dir" ]]; then
+        log_info "Available packages in $rpm_arch_dir:"
+        ls -la "$rpm_arch_dir/" || true
+    fi
+    
+    # Copy kmod-maccel package
     if [[ -f "$rpm_arch_dir/$kmod_filename" ]]; then
         cp "$rpm_arch_dir/$kmod_filename" "$output_dir/"
         log_success "Copied kmod-maccel package: $kmod_filename"
     else
-        log_error "kmod-maccel package not found: $rpm_arch_dir/$kmod_filename"
-        return 1
+        # Try to find any kmod-maccel package with different naming
+        local found_kmod=$(find "$rpm_arch_dir" -name "kmod-maccel-*.rpm" 2>/dev/null | head -1)
+        if [[ -n "$found_kmod" ]]; then
+            cp "$found_kmod" "$output_dir/"
+            kmod_filename=$(basename "$found_kmod")
+            log_success "Copied kmod-maccel package (alternative naming): $kmod_filename"
+        else
+            log_error "kmod-maccel package not found in: $rpm_arch_dir"
+            return 1
+        fi
     fi
     
+    # Copy maccel package
     if [[ -f "$rpm_arch_dir/$maccel_filename" ]]; then
         cp "$rpm_arch_dir/$maccel_filename" "$output_dir/"
         log_success "Copied maccel package: $maccel_filename"
     else
-        log_error "maccel package not found: $rpm_arch_dir/$maccel_filename"
-        return 1
+        # Try to find any maccel package with different naming
+        local found_maccel=$(find "$rpm_arch_dir" -name "maccel-*.rpm" ! -name "kmod-maccel-*.rpm" 2>/dev/null | head -1)
+        if [[ -n "$found_maccel" ]]; then
+            cp "$found_maccel" "$output_dir/"
+            maccel_filename=$(basename "$found_maccel")
+            log_success "Copied maccel package (alternative naming): $maccel_filename"
+        else
+            log_error "maccel package not found in: $rpm_arch_dir"
+            return 1
+        fi
     fi
     
-    # Generate checksums
+    # Generate checksums for Fedora packages
     cd "$output_dir"
     sha256sum *.rpm > checksums.txt
-    log_success "Generated checksums file"
+    log_success "Generated checksums file for Fedora packages"
     
     # Get source commit hash for metadata
     local source_commit="unknown"
@@ -368,7 +477,7 @@ copy_built_packages() {
         cd "$output_dir"
     fi
     
-    # Create build metadata
+    # Create build metadata for Fedora container build
     cat > build-info.json << EOF
 {
   "kernel_version": "$kernel_version",
@@ -377,24 +486,25 @@ copy_built_packages() {
   "fedora_version": "$fedora_version",
   "architecture": "$arch",
   "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "build_environment": "fedora-container",
   "packages": [
     {
       "name": "kmod-maccel",
       "filename": "$kmod_filename",
       "type": "kernel-module",
-      "description": "Kernel module for maccel mouse acceleration driver"
+      "description": "Kernel module for maccel mouse acceleration driver (Fedora native build)"
     },
     {
       "name": "maccel",
       "filename": "$maccel_filename",
       "type": "userspace-tools",
-      "description": "Userspace CLI tools and configuration for maccel"
+      "description": "Userspace CLI tools and configuration for maccel (Fedora Rust build)"
     }
   ]
 }
 EOF
     
-    log_success "Generated build metadata"
+    log_success "Generated build metadata for Fedora container build"
 }
 
 # Function to validate built packages
@@ -448,12 +558,13 @@ main() {
         exit 1
     fi
     
-    log_info "Building maccel RPM packages"
+    log_info "Building maccel RPM packages in Fedora container environment"
     log_info "Package type: $package_type"
     log_info "Kernel version: $kernel_version"
     log_info "Maccel version: $maccel_version"
     log_info "Fedora version: $fedora_version"
     log_info "Output directory: $output_dir"
+    log_info "Build environment: Native Fedora container with kernel-devel and Rust toolchain"
     
     # Create output directory
     mkdir -p "$output_dir"

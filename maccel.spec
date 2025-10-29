@@ -45,9 +45,17 @@ export RUSTFLAGS="%{?build_rustflags}"
 # Configure cargo for Fedora environment and handle cc build dependency
 export CC=gcc
 export CXX=g++
+export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/share/pkgconfig"
+
+# Verify this is a cargo workspace before building
+if ! grep -q 'members.*=.*\["cli"' Cargo.toml; then
+    echo "Error: Expected cargo workspace structure not found"
+    exit 1
+fi
 
 # Build the maccel CLI binary from the cargo workspace
-cargo build --bin maccel --release
+# Use --bin maccel to build specifically the CLI binary from the workspace
+cargo build --bin maccel --release --verbose
 
 %install
 # Create installation directories using Fedora filesystem layout
@@ -99,12 +107,3 @@ file target/release/maccel | grep -q "executable"
 test -f udev_rules/99-maccel.rules
 grep -q "maccel" udev_rules/99-maccel.rules
 
-%changelog
-* Tue Oct 29 2024 maccel-rpm-builder <noreply@github.com> - 1.0.0-1
-- Updated for native Fedora Rust compilation
-- Use Fedora's native Rust toolchain and cargo packages
-- Updated CLI binary installation paths for Fedora filesystem layout
-- Improved udev rules installation with Fedora's udev system
-- Updated group creation and permissions for Fedora standards
-- Enhanced dependency on kmod-maccel package
-- Removed Ubuntu-specific workarounds and dependencies

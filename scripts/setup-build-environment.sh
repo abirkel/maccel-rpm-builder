@@ -95,43 +95,83 @@ install_rpm_dependencies() {
 # Function to install kernel development packages in Fedora container
 install_kernel_devel() {
     local kernel_version="$1"
-    log_info "Installing kernel development packages for $kernel_version..."
+    log_info "Installing kernel development packages for $kernel_version in Fedora container..."
     
     # Extract the kernel version without architecture suffix for package matching
     local base_kernel_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
     
     log_info "Attempting to install kernel-devel for version: $base_kernel_version"
     
-    # Try to install the exact kernel-devel version
+    # Try to install the exact kernel-devel version first
     if dnf install -y "kernel-devel-${base_kernel_version}"; then
         log_success "Installed exact kernel-devel package: kernel-devel-${base_kernel_version}"
     else
-        log_warning "Exact kernel-devel version not available, installing generic kernel-devel"
-        # Fallback to generic kernel-devel package
-        if dnf install -y kernel-devel; then
-            log_success "Installed generic kernel-devel package"
+        log_warning "Exact kernel-devel version not available, trying alternative approaches..."
+        
+        # Try without the full version string
+        local short_version=$(echo "$base_kernel_version" | cut -d'-' -f1)
+        if dnf install -y "kernel-devel-${short_version}*"; then
+            log_success "Installed kernel-devel package matching: kernel-devel-${short_version}*"
         else
-            log_error "Failed to install kernel-devel package"
-            return 1
+            log_warning "Version-specific kernel-devel not available, installing latest kernel-devel"
+            # Fallback to latest kernel-devel package
+            if dnf install -y kernel-devel; then
+                log_success "Installed latest kernel-devel package"
+            else
+                log_error "Failed to install any kernel-devel package"
+                return 1
+            fi
         fi
     fi
     
-    # Verify kernel headers are available
+    # Also install kernel-headers if available
+    dnf install -y "kernel-headers-${base_kernel_version}" 2>/dev/null || \
+    dnf install -y kernel-headers 2>/dev/null || \
+    log_info "kernel-headers package not available or already satisfied"
+    
+    # Verify kernel headers are available for Fedora builds
     if [[ -d "/usr/src/kernels" ]] && [[ -n "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
-        log_success "Kernel headers available in /usr/src/kernels"
+        log_success "Kernel headers available in /usr/src/kernels for Fedora builds"
+        log_info "Available kernel versions:"
         ls -la /usr/src/kernels/
+        
+        # Set up symlink for exact version if needed
+        local exact_dir="/usr/src/kernels/$kernel_version"
+        if [[ ! -d "$exact_dir" ]]; then
+            local available_dir=$(ls -1 /usr/src/kernels/ | head -1)
+            if [[ -n "$available_dir" ]]; then
+                ln -sf "/usr/src/kernels/$available_dir" "$exact_dir" 2>/dev/null || true
+                log_info "Created symlink for kernel version: $kernel_version -> $available_dir"
+            fi
+        fi
     else
-        log_warning "Kernel headers directory is empty or missing"
+        log_warning "Kernel headers directory is empty or missing - this may cause build failures"
     fi
 }
 
 # Function to verify Rust toolchain installation in Fedora container
 verify_rust_installation() {
-    log_info "Verifying Rust toolchain installation..."
+    log_info "Verifying Rust toolchain installation in Fedora container..."
     
     if command_exists rustc && command_exists cargo; then
-        log_success "Rust already installed: $(rustc --version)"
+        log_success "Rust toolchain available: $(rustc --version)"
         log_info "Cargo version: $(cargo --version)"
+        
+        # Verify cargo can handle workspace builds (required for maccel)
+        if cargo --help | grep -q "workspace"; then
+            log_success "Cargo workspace support confirmed"
+        else
+            log_warning "Cargo workspace support may be limited"
+        fi
+        
+        # Test cc crate compilation support (needed for maccel's cc build dependency)
+        log_info "Verifying cc build dependency support..."
+        if command_exists gcc && command_exists g++; then
+            log_success "GCC toolchain available for cc crate compilation"
+        else
+            log_warning "GCC toolchain may be incomplete for cc crate builds"
+        fi
+        
         return 0
     fi
     
@@ -140,6 +180,7 @@ verify_rust_installation() {
     log_info "Attempting to install Rust via dnf..."
     if dnf install -y rust cargo; then
         log_success "Rust toolchain installed via dnf: $(rustc --version)"
+        log_info "Cargo version: $(cargo --version)"
     else
         log_error "Failed to install Rust via dnf"
         return 1
@@ -181,13 +222,13 @@ EOF
     log_success "RPM build tree created at $rpmbuild_root"
 }
 
-# Function to configure build environment variables
+# Function to configure build environment variables for Fedora container
 configure_build_environment() {
     local kernel_version="$1"
     local fedora_version="$2"
     local maccel_version="$3"
     
-    log_info "Configuring build environment variables..."
+    log_info "Configuring build environment variables for Fedora container..."
     
     # Set up environment variables
     export KERNEL_VERSION="$kernel_version"
@@ -202,7 +243,16 @@ configure_build_environment() {
         export ARCH="x86_64"  # Default architecture
     fi
     
-    # Set RPM build macros
+    # Set up Fedora-specific build environment
+    export CC=gcc
+    export CXX=g++
+    export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/share/pkgconfig"
+    
+    # Configure cargo for Fedora container environment
+    export CARGO_HOME="$HOME/.cargo"
+    export RUSTFLAGS="-C target-cpu=native"
+    
+    # Set RPM build macros for Fedora
     cat > "$HOME/.rpmmacros" << EOF
 %_topdir $RPMBUILD_ROOT
 %_tmppath $RPMBUILD_ROOT/tmp
@@ -210,23 +260,32 @@ configure_build_environment() {
 %maccel_version $maccel_version
 %fedora_version $fedora_version
 %dist .fc$fedora_version
+%_build_arch $ARCH
+%_target_cpu $ARCH
+%_bindir /usr/bin
+%_libdir /usr/lib64
+%_sysconfdir /etc
+%_udevrulesdir /usr/lib/udev/rules.d
+%_modulesloaddir /usr/lib/modules-load.d
 EOF
     
-    log_success "Build environment configured"
+    log_success "Build environment configured for Fedora container"
     log_info "Kernel Version: $KERNEL_VERSION"
     log_info "Fedora Version: $FEDORA_VERSION"
     log_info "Maccel Version: $MACCEL_VERSION"
     log_info "Architecture: $ARCH"
+    log_info "Build Environment: Native Fedora container"
 }
 
-# Function to validate build environment
+# Function to validate build environment for Fedora container
 validate_build_environment() {
-    log_info "Validating build environment..."
+    log_info "Validating build environment for Fedora container..."
     
     local errors=0
+    local warnings=0
     
-    # Check required commands
-    local required_commands=("rpmbuild" "make" "gcc" "git" "curl")
+    # Check required commands for Fedora builds
+    local required_commands=("rpmbuild" "make" "gcc" "g++" "git" "curl" "dnf")
     for cmd in "${required_commands[@]}"; do
         if ! command_exists "$cmd"; then
             log_error "Required command not found: $cmd"
@@ -234,30 +293,73 @@ validate_build_environment() {
         fi
     done
     
-    # Check Rust installation
+    # Check Rust installation for cargo workspace builds
     if ! command_exists rustc || ! command_exists cargo; then
         log_error "Rust toolchain not properly installed"
         ((errors++))
+    else
+        # Verify Rust can handle workspace builds
+        if ! cargo --help | grep -q "workspace"; then
+            log_warning "Cargo workspace support may be limited"
+            ((warnings++))
+        fi
     fi
     
     # Check RPM build tree
     if [[ ! -d "$HOME/rpmbuild" ]]; then
         log_error "RPM build tree not found"
         ((errors++))
+    else
+        # Check all required RPM directories
+        local rpm_dirs=("BUILD" "RPMS" "SOURCES" "SPECS" "SRPMS")
+        for dir in "${rpm_dirs[@]}"; do
+            if [[ ! -d "$HOME/rpmbuild/$dir" ]]; then
+                log_error "RPM build directory missing: $HOME/rpmbuild/$dir"
+                ((errors++))
+            fi
+        done
     fi
     
     # Check kernel headers in Fedora container
     if [[ ! -d "/usr/src/kernels" ]] || [[ -z "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
         log_warning "Kernel headers directory is empty or missing (/usr/src/kernels)"
+        log_warning "This will cause kernel module builds to fail"
+        ((warnings++))
     else
         log_info "Kernel headers found: $(ls -1 /usr/src/kernels/ | head -3 | tr '\n' ' ')..."
     fi
     
+    # Check Fedora-specific tools
+    local fedora_tools=("rpmdev-setuptree" "rpmlint" "pkg-config")
+    for tool in "${fedora_tools[@]}"; do
+        if ! command_exists "$tool"; then
+            log_warning "Fedora tool not found (optional): $tool"
+            ((warnings++))
+        fi
+    done
+    
+    # Check environment variables
+    if [[ -z "$KERNEL_VERSION" ]] || [[ -z "$FEDORA_VERSION" ]] || [[ -z "$MACCEL_VERSION" ]]; then
+        log_error "Required environment variables not set"
+        ((errors++))
+    fi
+    
+    # Check .rpmmacros file
+    if [[ ! -f "$HOME/.rpmmacros" ]]; then
+        log_warning "RPM macros file not found: $HOME/.rpmmacros"
+        ((warnings++))
+    fi
+    
+    # Summary
     if [[ $errors -eq 0 ]]; then
-        log_success "Build environment validation passed"
+        if [[ $warnings -eq 0 ]]; then
+            log_success "Build environment validation passed with no issues"
+        else
+            log_success "Build environment validation passed with $warnings warnings"
+        fi
         return 0
     else
-        log_error "Build environment validation failed with $errors errors"
+        log_error "Build environment validation failed with $errors errors and $warnings warnings"
         return 1
     fi
 }
@@ -274,8 +376,9 @@ main() {
         exit 1
     fi
     
-    log_info "Setting up build environment for maccel RPM packages"
+    log_info "Setting up build environment for maccel RPM packages in Fedora container"
     log_info "Target: Kernel $kernel_version, Fedora $fedora_version, maccel $maccel_version"
+    log_info "Environment: Native Fedora container with kernel-devel and Rust toolchain"
     
     # Install dependencies
     install_rpm_dependencies

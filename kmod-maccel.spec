@@ -122,10 +122,3 @@ file driver/%{kmod_name}.ko | grep -q "kernel module"
     /usr/sbin/modinfo driver/%{kmod_name}.ko | grep "vermagic:"
 }
 
-%changelog
-* Tue Oct 29 2024 maccel-rpm-builder <noreply@github.com> - 1.0.0-1
-- Updated for native Fedora container builds
-- Use Fedora kernel-devel packages and build system
-- Updated module installation paths for Fedora filesystem layout
-- Improved systemd integration for module loading
-- Removed Ubuntu-specific workarounds and dependencies
