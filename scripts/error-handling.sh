@@ -413,8 +413,11 @@ check_system_resources() {
         log_info "Disk space check passed" "available=${available_space}KB"
     fi
     
-    # Check memory
-    local available_memory=$(free | awk 'NR==2{print $7}')
+    # Check memory (if free command is available)
+    local available_memory=0
+    if command -v free >/dev/null 2>&1; then
+        available_memory=$(free | awk 'NR==2{print $7}' 2>/dev/null || echo "0")
+    fi
     local required_memory=524288  # 512MB in KB
     
     if [[ $available_memory -lt $required_memory ]]; then
@@ -423,9 +426,12 @@ check_system_resources() {
         log_info "Memory check passed" "available=${available_memory}KB"
     fi
     
-    # Check CPU load
-    local cpu_load=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//')
-    local cpu_cores=$(nproc)
+    # Check CPU load (if uptime command is available)
+    local cpu_load=0
+    if command -v uptime >/dev/null 2>&1; then
+        cpu_load=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//' 2>/dev/null || echo "0")
+    fi
+    local cpu_cores=$(nproc 2>/dev/null || echo "1")
     local load_threshold=$(echo "$cpu_cores * 2" | bc 2>/dev/null || echo $((cpu_cores * 2)))
     
     if (( $(echo "$cpu_load > $load_threshold" | bc -l 2>/dev/null || echo 0) )); then
@@ -494,10 +500,10 @@ generate_error_report() {
     "os": "$(uname -s)",
     "kernel": "$(uname -r)",
     "architecture": "$(uname -m)",
-    "hostname": "$(hostname)",
-    "uptime": "$(uptime)",
+    "hostname": "$(hostname 2>/dev/null || echo 'unknown')",
+    "uptime": "$(uptime 2>/dev/null || echo 'unknown')",
     "disk_usage": $(df -h / | awk 'NR==2 {print "{\"filesystem\":\"" $1 "\",\"size\":\"" $2 "\",\"used\":\"" $3 "\",\"available\":\"" $4 "\",\"use_percent\":\"" $5 "\"}"}'),
-    "memory_usage": $(free -h | awk 'NR==2{print "{\"total\":\"" $2 "\",\"used\":\"" $3 "\",\"free\":\"" $4 "\",\"available\":\"" $7 "\"}"}')
+    "memory_usage": $(if command -v free >/dev/null 2>&1; then free -h | awk 'NR==2{print "{\"total\":\"" $2 "\",\"used\":\"" $3 "\",\"free\":\"" $4 "\",\"available\":\"" $7 "\"}"}' 2>/dev/null || echo '{}'; else echo '{}'; fi)
   },
   "environment": {
     "kernel_version": "${KERNEL_VERSION:-unknown}",
