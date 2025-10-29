@@ -6,15 +6,18 @@ This document describes the GitHub repository setup and integration configuratio
 
 ```
 .github/
-├── workflows/
-│   ├── build-rpm.yml          # Main RPM building workflow
-│   └── test-dispatch.yml      # Repository dispatch testing
-└── settings.yml               # Repository configuration
+└── workflows/
+    └── build-rpm.yml          # Main RPM building workflow
 
 scripts/
-├── setup-github-repo.sh       # Repository creation and setup
-├── test-dispatch.sh           # Test repository dispatch trigger
-└── validate-workflows.sh      # Workflow validation
+├── test-runner.sh             # Unified test runner (includes dispatch testing)
+├── build-packages.sh          # Package building logic
+├── setup-build-environment.sh # Build environment setup
+├── detect-maccel-version.sh   # Version detection
+├── check-existing-packages.sh # Package existence checking
+├── sign-packages.sh           # Package signing
+├── build-notifications.sh     # Build status notifications
+└── error-handling.sh          # Error handling library
 ```
 
 ## GitHub Actions Workflows
@@ -38,9 +41,15 @@ scripts/
 - Build matrix for both `kmod-maccel` and `maccel` packages
 - Automatic GitHub release creation
 
-### Test Workflow (`test-dispatch.yml`)
+### Testing
 
-Simple workflow to test the repository dispatch mechanism by triggering the main build workflow.
+Repository dispatch testing is handled by the unified test runner:
+
+```bash
+./scripts/test-runner.sh integration
+```
+
+This provides comprehensive end-to-end testing of the repository dispatch mechanism.
 
 ## Repository Dispatch Integration
 
@@ -61,47 +70,54 @@ Simple workflow to test the repository dispatch mechanism by triggering the main
 ### Triggering from External Repositories
 
 ```bash
+# Using GitHub CLI
 gh api repos/USERNAME/maccel-rpm-builder/dispatches \
   --method POST \
   --field event_type=build-for-kernel \
-  --field client_payload='{"kernel_version":"6.11.5-300.fc41.x86_64","fedora_version":"41","trigger_repo":"MyProject"}'
+  --field client_payload='{"kernel_version":"6.11.5-300.fc41.x86_64","fedora_version":"41","trigger_repo":"MyProject","force_rebuild":false}'
+
+# Using curl
+curl -X POST \
+  -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  https://api.github.com/repos/USERNAME/maccel-rpm-builder/dispatches \
+  -d '{"event_type":"build-for-kernel","client_payload":{"kernel_version":"6.11.5-300.fc41.x86_64","fedora_version":"41","trigger_repo":"MyProject","force_rebuild":false}}'
 ```
 
 ## Setup Instructions
 
 ### 1. Create GitHub Repository
 
-Run the setup script:
+Create the repository manually through GitHub's web interface or using the GitHub CLI:
 
 ```bash
-./scripts/setup-github-repo.sh
+gh repo create maccel-rpm-builder --public --description "Automated RPM package builder for maccel mouse acceleration driver"
 ```
 
-This script will:
-- Create the GitHub repository (public)
-- Configure repository settings and topics
-- Set up branch protection
-- Push the initial commit
+Configure repository settings:
+- Enable Issues
+- Disable Projects and Wiki
+- Set topics: `rpm`, `packaging`, `maccel`, `mouse-acceleration`, `fedora`, `blue-build`, `automation`
 
 ### 2. Test Repository Dispatch
 
-Test the integration:
+Test the integration using the unified test runner:
 
 ```bash
-./scripts/test-dispatch.sh [kernel_version] [fedora_version] [trigger_repo] [force_rebuild]
+# Quick integration test
+./scripts/test-runner.sh integration
+
+# Full test suite (includes cross-version testing)
+./scripts/test-runner.sh all
 ```
 
-Example:
-```bash
-./scripts/test-dispatch.sh "6.11.5-300.fc41.x86_64" "41" "test" "false"
-```
+### 3. Validate Environment
 
-### 3. Validate Workflows
-
-Ensure workflows are properly configured:
+Ensure your local development environment is properly set up:
 
 ```bash
-./scripts/validate-workflows.sh
+# Check prerequisites and validate workflows
+./scripts/test-runner.sh unit
 ```
 
 ## Release Management
@@ -156,20 +172,61 @@ This repository is designed to integrate seamlessly with Blue Build workflows:
 3. Builder creates or returns existing RPM packages
 4. Blue Build downloads and installs packages in container image
 
+## Testing and Validation
+
+### Local Testing
+
+```bash
+# Prerequisites check (required tools, authentication, etc.)
+./scripts/test-runner.sh unit
+
+# End-to-end integration test (triggers actual workflow)
+./scripts/test-runner.sh integration
+
+# Performance testing (caching efficiency)
+./scripts/test-runner.sh performance
+
+# Error handling validation
+./scripts/test-runner.sh error
+
+# Cross-version compatibility (multiple Fedora versions)
+./scripts/test-runner.sh cross-version
+```
+
+### Test Requirements
+
+- **GitHub CLI** (`gh`) - installed and authenticated
+- **rpmlint** - for RPM spec validation
+- **curl**, **jq**, **git** - for API calls and data processing
+
+Install missing tools:
+```bash
+# Fedora/RHEL
+sudo dnf install gh rpmlint curl jq git
+
+# Ubuntu/Debian  
+sudo apt install gh rpmlint curl jq git
+
+# macOS
+brew install gh rpmlint curl jq git
+```
+
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Invalid kernel version format**: Ensure format matches `X.Y.Z-REL.fcN.ARCH`
-2. **Authentication errors**: Ensure GitHub token has proper permissions
+2. **Authentication errors**: Run `gh auth login` to authenticate
 3. **Build failures**: Check workflow logs for detailed error messages
 4. **Missing packages**: Verify release was created successfully
+5. **Test failures**: Ensure all required tools are installed
 
 ### Debugging
 
 - Check workflow runs: `https://github.com/USERNAME/maccel-rpm-builder/actions`
 - View releases: `https://github.com/USERNAME/maccel-rpm-builder/releases`
-- Test dispatch: Use the test workflow or script
+- Test dispatch: `./scripts/test-runner.sh integration --verbose`
+- Validate environment: `./scripts/test-runner.sh unit`
 
 ## Security Considerations
 
