@@ -48,6 +48,11 @@ jobs:
     steps:
       - name: Setup container environment
         run: |
+          # Optimize dnf for faster package installation
+          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
+          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
+          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
+          
           # Install essential packages for GitHub Actions and our scripts
           dnf update -y
           dnf install -y git curl jq wget findutils which
@@ -182,12 +187,17 @@ jobs:
     steps:
       - name: Setup container environment
         run: |
+          # Optimize dnf for faster package installation
+          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
+          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
+          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
+          
           # Install essential packages for GitHub Actions and build tools
           dnf update -y
           dnf install -y git curl jq wget findutils which rpm-build rpmdevtools rpmlint
           
-          # Install build dependencies
-          dnf install -y gcc make rust cargo
+          # Install build dependencies for maccel
+          dnf install -y gcc gcc-c++ make rust cargo pkg-config elfutils-libelf-devel udev kmod
           
           # Install kernel-devel for the specific kernel version if available
           # This will be handled by the build scripts for the exact version needed
@@ -206,8 +216,12 @@ jobs:
           # Set up Git configuration for container
           git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
           
-          # Set up RPM build environment
+          # Set up RPM build environment using native Fedora tools
           rpmdev-setuptree
+          
+          # Verify Rust toolchain
+          rustc --version
+          cargo --version
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -320,6 +334,11 @@ jobs:
     steps:
       - name: Setup container environment
         run: |
+          # Optimize dnf for faster package installation
+          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
+          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
+          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
+          
           # Install essential packages for GitHub Actions
           dnf update -y
           dnf install -y git curl jq wget findutils which
@@ -675,6 +694,11 @@ jobs:
     steps:
       - name: Setup container environment
         run: |
+          # Optimize dnf for faster package installation
+          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
+          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
+          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
+          
           # Install essential packages for GitHub Actions
           dnf update -y
           dnf install -y git curl jq wget findutils which
@@ -721,6 +745,11 @@ jobs:
     steps:
       - name: Setup container environment
         run: |
+          # Optimize dnf for faster package installation
+          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
+          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
+          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
+          
           # Install essential packages for GitHub Actions
           dnf update -y
           dnf install -y git curl jq wget findutils which

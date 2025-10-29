@@ -84,13 +84,24 @@ download_maccel_source() {
         return 1
     fi
     
-    if [[ ! -f "Cargo.toml" && ! -f "cli/Cargo.toml" ]]; then
-        log_error "Expected Cargo.toml not found"
+    if [[ ! -f "Cargo.toml" ]]; then
+        log_error "Expected workspace Cargo.toml not found"
+        return 1
+    fi
+    
+    if [[ ! -d "cli" || ! -f "cli/Cargo.toml" ]]; then
+        log_error "Expected cli directory with Cargo.toml not found"
         return 1
     fi
     
     if [[ ! -f "udev_rules/99-maccel.rules" ]]; then
         log_error "Expected udev rules file not found"
+        return 1
+    fi
+    
+    # Verify workspace structure
+    if ! grep -q 'members.*=.*\["cli"' Cargo.toml; then
+        log_error "Expected workspace structure not found in Cargo.toml"
         return 1
     fi
     

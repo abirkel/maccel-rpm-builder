@@ -179,8 +179,8 @@ check_kernel_devel_availability() {
             return 1
         fi
     else
-        # On Ubuntu/Debian systems, we use linux-headers-generic instead
-        log_info "Using linux-headers-generic for kernel development on this system"
+        # Fallback: assume kernel development packages are available
+        log_info "Kernel development packages assumed to be available"
         return 0
     fi
 }

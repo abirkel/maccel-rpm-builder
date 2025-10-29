@@ -36,9 +36,7 @@ command_exists() {
 
 # Function to detect OS and package manager
 detect_os() {
-    if command_exists apt-get; then
-        echo "ubuntu"
-    elif command_exists dnf; then
+    if command_exists dnf; then
         echo "fedora"
     elif command_exists yum; then
         echo "rhel"
@@ -49,144 +47,126 @@ detect_os() {
 
 
 
-# Function to optimize package installation
+# Function to optimize package installation for Fedora containers
 optimize_package_installation() {
-    local os_type=$(detect_os)
-    
-    case "$os_type" in
-        "ubuntu")
-            # Disable man-db triggers and documentation to speed up installation
-            export DEBIAN_FRONTEND=noninteractive
-            sudo mkdir -p /etc/dpkg/dpkg.cfg.d
-            echo 'path-exclude=/usr/share/man/*' | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null
-            echo 'path-exclude=/usr/share/doc/*' | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null
-            echo 'path-exclude=/usr/share/locale/*' | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null
-            log_info "Optimized package installation for Ubuntu (disabled man-db triggers)"
-            ;;
-        *)
-            log_info "No package installation optimizations needed for $os_type"
-            ;;
-    esac
+    # Optimize dnf for faster package installation in Fedora containers
+    echo 'fastestmirror=1' >> /etc/dnf/dnf.conf 2>/dev/null || true
+    echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf 2>/dev/null || true
+    echo 'deltarpm=0' >> /etc/dnf/dnf.conf 2>/dev/null || true
+    log_info "Optimized dnf configuration for faster package installation"
 }
 
-# Function to install RPM build dependencies
+# Function to install RPM build dependencies in Fedora container
 install_rpm_dependencies() {
-    log_info "Installing RPM build dependencies..."
+    log_info "Installing RPM build dependencies in Fedora container..."
     
     # Optimize package installation first
     optimize_package_installation
     
-    local os_type=$(detect_os)
-    log_info "Detected OS: $os_type"
+    # Update package manager
+    dnf update -y
     
-    case "$os_type" in
-        "ubuntu")
-            # Update package manager with optimizations already applied
-            sudo apt-get update -y
-            
-            # Install all dependencies in a single command for efficiency
-            sudo apt-get install -y --no-install-recommends \
-                rpm \
-                rpmlint \
-                build-essential \
-                make \
-                gcc \
-                git \
-                curl \
-                wget \
-                alien \
-                fakeroot \
-                rustc \
-                cargo \
-                tar \
-                gzip \
-                pkg-config \
-                libc6-dev \
-                libelf-dev \
-                jq \
-                linux-headers-generic \
-                linux-libc-dev \
-                udev \
-                kmod
-            
-            log_success "RPM build tools, Rust, and kernel development packages installed (Ubuntu)"
-            ;;
-        *)
-            log_error "Unsupported OS for RPM building: $os_type (only Ubuntu is supported)"
-            return 1
-            ;;
-    esac
+    # Install core RPM build tools and maccel build dependencies
+    dnf install -y \
+        rpm-build \
+        rpmdevtools \
+        rpmlint \
+        make \
+        gcc \
+        gcc-c++ \
+        git \
+        curl \
+        wget \
+        tar \
+        gzip \
+        findutils \
+        which \
+        jq \
+        pkg-config \
+        elfutils-libelf-devel \
+        udev \
+        kmod \
+        rust \
+        cargo
+    
+    log_success "RPM build tools, Rust, and kernel development packages installed"
 }
 
-# Function to install kernel development packages
+# Function to install kernel development packages in Fedora container
 install_kernel_devel() {
     local kernel_version="$1"
     log_info "Installing kernel development packages for $kernel_version..."
     
-    local os_type=$(detect_os)
+    # Extract the kernel version without architecture suffix for package matching
+    local base_kernel_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
     
-    case "$os_type" in
-        "ubuntu")
-            # Kernel development packages are now installed with RPM dependencies
-            # This function is kept for compatibility but does nothing on Ubuntu
-            log_info "Kernel development packages already installed with RPM dependencies"
-            ;;
-        *)
-            log_error "Unsupported OS for kernel development: $os_type (only Ubuntu is supported)"
+    log_info "Attempting to install kernel-devel for version: $base_kernel_version"
+    
+    # Try to install the exact kernel-devel version
+    if dnf install -y "kernel-devel-${base_kernel_version}"; then
+        log_success "Installed exact kernel-devel package: kernel-devel-${base_kernel_version}"
+    else
+        log_warning "Exact kernel-devel version not available, installing generic kernel-devel"
+        # Fallback to generic kernel-devel package
+        if dnf install -y kernel-devel; then
+            log_success "Installed generic kernel-devel package"
+        else
+            log_error "Failed to install kernel-devel package"
             return 1
-            ;;
-    esac
+        fi
+    fi
+    
+    # Verify kernel headers are available
+    if [[ -d "/usr/src/kernels" ]] && [[ -n "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
+        log_success "Kernel headers available in /usr/src/kernels"
+        ls -la /usr/src/kernels/
+    else
+        log_warning "Kernel headers directory is empty or missing"
+    fi
 }
 
-# Function to install Rust toolchain
-install_rust() {
-    log_info "Installing Rust toolchain..."
+# Function to verify Rust toolchain installation in Fedora container
+verify_rust_installation() {
+    log_info "Verifying Rust toolchain installation..."
     
-    if command_exists rustc; then
-        log_info "Rust already installed: $(rustc --version)"
+    if command_exists rustc && command_exists cargo; then
+        log_success "Rust already installed: $(rustc --version)"
+        log_info "Cargo version: $(cargo --version)"
         return 0
     fi
     
-    # Install Rust using rustup
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    
-    # Source the cargo environment
-    source "$HOME/.cargo/env"
-    
-    # Verify installation
-    if command_exists rustc && command_exists cargo; then
-        log_success "Rust toolchain installed: $(rustc --version)"
+    # Rust should already be installed via dnf in install_rpm_dependencies
+    log_warning "Rust not found but should have been installed via dnf"
+    log_info "Attempting to install Rust via dnf..."
+    if dnf install -y rust cargo; then
+        log_success "Rust toolchain installed via dnf: $(rustc --version)"
     else
-        log_error "Failed to install Rust toolchain"
+        log_error "Failed to install Rust via dnf"
         return 1
     fi
 }
 
-# Function to set up RPM build tree
+# Function to set up RPM build tree in Fedora container
 setup_rpm_build_tree() {
-    log_info "Setting up RPM build tree..."
+    log_info "Setting up RPM build tree using native Fedora tools..."
     
-    local os_type=$(detect_os)
     local rpmbuild_root="$HOME/rpmbuild"
     
-    case "$os_type" in
-        "ubuntu")
-            # Manually create RPM build directories for Ubuntu
-            log_info "Creating RPM build directories manually (Ubuntu)"
-            mkdir -p "$rpmbuild_root"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-            mkdir -p "$rpmbuild_root/RPMS"/{i386,i586,i686,x86_64,noarch}
-            
-            # Create .rpmmacros file
-            cat > "$HOME/.rpmmacros" << EOF
+    # Use rpmdev-setuptree for native Fedora systems
+    if command_exists rpmdev-setuptree; then
+        rpmdev-setuptree
+        log_success "RPM build tree created using rpmdev-setuptree"
+    else
+        log_warning "rpmdev-setuptree not found, creating directories manually"
+        mkdir -p "$rpmbuild_root"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+        mkdir -p "$rpmbuild_root/RPMS"/{i386,i586,i686,x86_64,noarch,aarch64}
+        
+        # Create .rpmmacros file
+        cat > "$HOME/.rpmmacros" << EOF
 %_topdir $rpmbuild_root
 %_tmppath $rpmbuild_root/tmp
 EOF
-            ;;
-        *)
-            log_error "Unsupported OS for RPM build tree setup: $os_type (only Ubuntu is supported)"
-            return 1
-            ;;
-    esac
+    fi
     
     # Verify directories were created
     local rpm_dirs=("BUILD" "RPMS" "SOURCES" "SPECS" "SRPMS")
@@ -266,18 +246,11 @@ validate_build_environment() {
         ((errors++))
     fi
     
-    # Check kernel headers (location varies by OS)
-    local os_type=$(detect_os)
-    if [[ "$os_type" == "ubuntu" ]]; then
-        # On Ubuntu, kernel headers are in /usr/src/linux-headers-*
-        if [[ ! -d "/usr/src" ]] || [[ -z "$(ls -d /usr/src/linux-headers-* 2>/dev/null)" ]]; then
-            log_warning "Kernel headers directory is empty or missing"
-        fi
+    # Check kernel headers in Fedora container
+    if [[ ! -d "/usr/src/kernels" ]] || [[ -z "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
+        log_warning "Kernel headers directory is empty or missing (/usr/src/kernels)"
     else
-        # On Fedora/RHEL, kernel headers are in /usr/src/kernels
-        if [[ ! -d "/usr/src/kernels" ]] || [[ -z "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
-            log_warning "Kernel headers directory is empty or missing"
-        fi
+        log_info "Kernel headers found: $(ls -1 /usr/src/kernels/ | head -3 | tr '\n' ' ')..."
     fi
     
     if [[ $errors -eq 0 ]]; then
@@ -307,7 +280,7 @@ main() {
     # Install dependencies
     install_rpm_dependencies
     install_kernel_devel "$kernel_version"
-    install_rust
+    verify_rust_installation
     
     # Set up build environment
     setup_rpm_build_tree
