@@ -107,3 +107,14 @@ file target/release/maccel | grep -q "executable"
 test -f udev_rules/99-maccel.rules
 grep -q "maccel" udev_rules/99-maccel.rules
 
+%changelog
+* Wed Oct 29 2025 maccel-rpm-builder <noreply@github.com> - 1.0.0-1
+- Initial RPM package for maccel userspace tools
+- Native Fedora Rust toolchain integration
+- Cargo workspace build support for CLI binary
+- Udev rules installation for device access permissions
+- Automatic maccel group creation and management
+- Systemd-udev integration for rule reloading
+- Configuration directory setup following Fedora standards
+- Proper dependency on kmod-maccel kernel module package
+
