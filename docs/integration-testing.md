@@ -272,8 +272,14 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container:
+      image: fedora:41
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Container Environment
+        run: |
+          dnf update -y
+          dnf install -y git curl jq wget
       - name: Run Integration Tests
         run: ./scripts/run-integration-tests.sh integration
         env:

@@ -1,14 +1,14 @@
-# Fedora Container Migration Guide
+# Fedora Container Build Guide
 
 ## Overview
 
-This document describes the migration from Ubuntu-based GitHub Actions runners to Fedora container-based builds for the maccel-rpm-builder project.
+This document describes the Fedora container-based build system for the maccel-rpm-builder project, which provides native RPM packaging using authentic Fedora environments.
 
 ## Key Changes
 
 ### 1. Container Configuration
 
-All jobs now use Fedora containers instead of Ubuntu runners:
+All jobs use Fedora containers for native RPM building:
 
 ```yaml
 container:
@@ -57,8 +57,8 @@ Added explicit file permission fixes for:
 
 ### Native Fedora Environment
 - Uses the same package manager and tools as target systems
-- Eliminates Ubuntu-specific workarounds and compatibility issues
-- Provides authentic Fedora build environment
+- Provides authentic Fedora build environment with native kernel-devel packages
+- Ensures proper RPM packaging standards compliance
 
 ### Improved Reliability
 - Consistent build environment across all runs
@@ -144,9 +144,9 @@ dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
 dnf install -y gh
 ```
 
-## Migration Checklist
+## Implementation Checklist
 
-- [x] Update all job configurations to use Fedora containers
+- [x] Configure all job configurations to use Fedora containers
 - [x] Add container setup steps to all jobs
 - [x] Configure privileged container options for kernel builds
 - [x] Add proper volume mounts for kernel module compilation
@@ -155,15 +155,14 @@ dnf install -y gh
 - [x] Update test dispatch workflow for consistency
 - [x] Create container compatibility test script
 - [x] Validate YAML syntax for all workflow files
-- [x] Document migration process and troubleshooting
+- [x] Document build process and troubleshooting
 
-## Next Steps
+## Maintenance Tasks
 
-1. **Test the updated workflow** with a real kernel version
-2. **Monitor build performance** compared to Ubuntu-based builds
-3. **Update build scripts** if any Ubuntu-specific code remains
-4. **Validate package quality** with the new build environment
-5. **Update documentation** based on real-world usage
+1. **Monitor build performance** and optimize as needed
+2. **Update Fedora versions** as new releases become available
+3. **Validate package quality** with each Fedora release
+4. **Keep documentation current** with build environment changes
 
 ## Compatibility Notes
 
@@ -173,8 +172,8 @@ dnf install -y gh
 - Artifact upload/download functions normally with proper permissions
 
 ### Build Tool Compatibility
-- Native Fedora RPM tools provide better package quality
-- Rust toolchain works identically to Ubuntu
+- Native Fedora RPM tools provide optimal package quality
+- Rust toolchain provides consistent compilation environment
 - Kernel module compilation uses proper Fedora kernel-devel packages
 
 ### Integration Compatibility
