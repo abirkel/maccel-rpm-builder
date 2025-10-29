@@ -58,8 +58,8 @@ jobs:
           dnf install -y git curl jq wget findutils which
           
           # Install GitHub CLI
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          # Install GitHub CLI using alternative method for Fedora 41
+          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
           dnf install -y gh
           
           # Set up Git configuration for container
@@ -204,8 +204,8 @@ jobs:
           dnf install -y kernel-devel || echo "Generic kernel-devel installation failed, will be handled by build scripts"
           
           # Install GitHub CLI
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          # Install GitHub CLI using alternative method for Fedora 41
+          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
           dnf install -y gh
           
           # Install Sigstore cosign for package signing
@@ -344,8 +344,8 @@ jobs:
           dnf install -y git curl jq wget findutils which
           
           # Install GitHub CLI
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          # Install GitHub CLI using alternative method for Fedora 41
+          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
           dnf install -y gh
           
           # Set up Git configuration for container
@@ -704,8 +704,8 @@ jobs:
           dnf install -y git curl jq wget findutils which
           
           # Install GitHub CLI
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          # Install GitHub CLI using alternative method for Fedora 41
+          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
           dnf install -y gh
           
           # Set up Git configuration for container
@@ -755,8 +755,8 @@ jobs:
           dnf install -y git curl jq wget findutils which
           
           # Install GitHub CLI
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          # Install GitHub CLI using alternative method for Fedora 41
+          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
           dnf install -y gh
           
           # Set up Git configuration for container
