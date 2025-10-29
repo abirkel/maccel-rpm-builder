@@ -170,12 +170,12 @@ check_kernel_devel_availability() {
     
     # Check if we're on a system that uses dnf
     if command -v dnf >/dev/null 2>&1; then
-        # Try to query package availability (non-blocking)
-        if timeout 30 dnf list available "kernel-devel-${base_version}" >/dev/null 2>&1; then
+        # Try to query package availability (non-blocking, short timeout)
+        if timeout 10 dnf list available "kernel-devel-${base_version}" >/dev/null 2>&1; then
             log_info "kernel-devel package is available" "version=$base_version"
             return 0
         else
-            log_warning "kernel-devel package availability check failed" "version=$base_version, timeout=30s"
+            log_warning "kernel-devel package availability check failed or timed out" "version=$base_version, timeout=10s"
             return 1
         fi
     else
@@ -500,8 +500,8 @@ generate_error_report() {
     "os": "$(uname -s)",
     "kernel": "$(uname -r)",
     "architecture": "$(uname -m)",
-    "hostname": "$(hostname 2>/dev/null || echo 'unknown')",
-    "uptime": "$(uptime 2>/dev/null || echo 'unknown')",
+    "hostname": "$(if command -v hostname >/dev/null 2>&1; then hostname 2>/dev/null || echo 'unknown'; else echo 'unknown'; fi)",
+    "uptime": "$(if command -v uptime >/dev/null 2>&1; then uptime 2>/dev/null || echo 'unknown'; else echo 'unknown'; fi)",
     "disk_usage": $(df -h / | awk 'NR==2 {print "{\"filesystem\":\"" $1 "\",\"size\":\"" $2 "\",\"used\":\"" $3 "\",\"available\":\"" $4 "\",\"use_percent\":\"" $5 "\"}"}'),
     "memory_usage": $(if command -v free >/dev/null 2>&1; then free -h | awk 'NR==2{print "{\"total\":\"" $2 "\",\"used\":\"" $3 "\",\"free\":\"" $4 "\",\"available\":\"" $7 "\"}"}' 2>/dev/null || echo '{}'; else echo '{}'; fi)
   },
