@@ -403,11 +403,8 @@ jobs:
             sha256sum *.rpm > checksums.txt
           fi
           
-          # Extract architecture from kernel version for metadata
-          ARCH="x86_64"  # Default
-          if [[ "$KERNEL_VERSION" =~ \.([^.]+)$ ]]; then
-            ARCH="${BASH_REMATCH[1]}"
-          fi
+          # Extract architecture from kernel version using bash parameter expansion
+          ARCH="${KERNEL_VERSION##*.}"
           
           # Generate enhanced build metadata if not already present
           if [[ ! -f build-info.json ]]; then

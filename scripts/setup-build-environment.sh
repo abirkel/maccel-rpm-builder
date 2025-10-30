@@ -236,12 +236,8 @@ configure_build_environment() {
     export MACCEL_VERSION="$maccel_version"
     export RPMBUILD_ROOT="$HOME/rpmbuild"
     
-    # Extract architecture from kernel version
-    if [[ "$kernel_version" =~ \.([^.]+)$ ]]; then
-        export ARCH="${BASH_REMATCH[1]}"
-    else
-        export ARCH="x86_64"  # Default architecture
-    fi
+    # Extract architecture from kernel version using bash parameter expansion
+    export ARCH="${kernel_version##*.}"
     
     # Set up Fedora-specific build environment
     export CC=gcc

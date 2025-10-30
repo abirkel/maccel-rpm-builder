@@ -407,10 +407,8 @@ copy_built_packages() {
     log_info "Copying built packages from Fedora container build to output directory..."
     
     # Extract architecture from kernel version for Fedora package naming
-    local arch="x86_64"  # Default
-    if [[ "$kernel_version" =~ \.([^.]+)$ ]]; then
-        arch="${BASH_REMATCH[1]}"
-    fi
+    # Use bash parameter expansion to get everything after the last dot
+    local arch="${kernel_version##*.}"
     
     # Define package filenames following Fedora conventions
     local release="1"  # Default release number
