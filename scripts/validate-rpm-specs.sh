@@ -4,15 +4,12 @@
 
 set -euo pipefail
 
-echo "=== RPM Spec File Validation ==="
-echo "Validating RPM specifications with rpmlint..."
-echo
+# Source error handling library for consistent logging
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+log_info "=== RPM Spec File Validation ==="
+log_info "Validating RPM specifications with rpmlint..."
 
 # Function to validate a spec file
 validate_spec() {
@@ -20,7 +17,7 @@ validate_spec() {
     echo "Validating $spec_file..."
     
     if [ ! -f "$spec_file" ]; then
-        echo -e "${RED}ERROR: $spec_file not found${NC}"
+        log_error "ERROR: $spec_file not found${NC}"
         return 1
     fi
     
@@ -28,15 +25,15 @@ validate_spec() {
     if rpmlint_output=$(rpmlint "$spec_file" 2>&1); then
         # Check if there are any errors or warnings
         if echo "$rpmlint_output" | grep -q "0 errors, 0 warnings"; then
-            echo -e "${GREEN}✓ $spec_file passed validation${NC}"
+            log_success "✓ $spec_file passed validation${NC}"
             return 0
         else
-            echo -e "${YELLOW}⚠ $spec_file has warnings:${NC}"
+            log_warning "⚠ $spec_file has warnings:${NC}"
             echo "$rpmlint_output"
             return 1
         fi
     else
-        echo -e "${RED}✗ $spec_file failed validation:${NC}"
+        log_error "✗ $spec_file failed validation:${NC}"
         echo "$rpmlint_output"
         return 1
     fi
@@ -57,10 +54,10 @@ check_required_sections() {
     done
     
     if [ ${#missing_sections[@]} -eq 0 ]; then
-        echo -e "${GREEN}✓ All required sections present in $spec_file${NC}"
+        log_success "✓ All required sections present in $spec_file${NC}"
         return 0
     else
-        echo -e "${RED}✗ Missing sections in $spec_file:${NC}"
+        log_error "✗ Missing sections in $spec_file:${NC}"
         printf '%s\n' "${missing_sections[@]}"
         return 1
     fi
@@ -93,11 +90,11 @@ echo
 
 # Summary
 if [ $validation_failed -eq 0 ]; then
-    echo -e "${GREEN}=== All RPM spec files passed validation ===${NC}"
+    log_success "=== All RPM spec files passed validation ===${NC}"
     echo "Both kmod-maccel.spec and maccel.spec are compliant with RPM packaging standards."
     exit 0
 else
-    echo -e "${RED}=== RPM spec validation failed ===${NC}"
+    log_error "=== RPM spec validation failed ===${NC}"
     echo "Please fix the issues above before proceeding with package building."
     exit 1
 fi
