@@ -78,54 +78,40 @@ install_kernel_devel() {
     log_info "Installing kernel development packages for $kernel_version in Fedora container..."
     
     # Extract the kernel version without architecture suffix for package matching
-    local base_kernel_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
+    local base_kernel_version
+    base_kernel_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
     
     log_info "Attempting to install kernel-devel for version: $base_kernel_version"
     
-    # Try to install the exact kernel-devel version first
-    if dnf install -y "kernel-devel-${base_kernel_version}"; then
-        log_success "Installed exact kernel-devel package: kernel-devel-${base_kernel_version}"
-    else
-        log_warning "Exact kernel-devel version not available, trying alternative approaches..."
-        
-        # Try without the full version string
-        local short_version=$(echo "$base_kernel_version" | cut -d'-' -f1)
-        if dnf install -y "kernel-devel-${short_version}*"; then
-            log_success "Installed kernel-devel package matching: kernel-devel-${short_version}*"
-        else
-            log_warning "Version-specific kernel-devel not available, installing latest kernel-devel"
-            # Fallback to latest kernel-devel package
-            if dnf install -y kernel-devel; then
-                log_success "Installed latest kernel-devel package"
-            else
-                log_error "Failed to install any kernel-devel package"
-                return 1
-            fi
-        fi
+    # Try to install the exact kernel-devel version
+    # Fail fast if not available - mismatched versions produce broken kernel modules
+    if ! dnf install -y "kernel-devel-${base_kernel_version}"; then
+        log_error "Exact kernel-devel version not available: kernel-devel-${base_kernel_version}"
+        log_error "Building kernel modules requires exact version match"
+        log_error "Available kernel-devel versions:"
+        dnf list available "kernel-devel*" 2>/dev/null || true
+        return 1
     fi
     
-    # Also install kernel-headers if available
-    dnf install -y "kernel-headers-${base_kernel_version}" 2>/dev/null || \
-    dnf install -y kernel-headers 2>/dev/null || \
-    log_info "kernel-headers package not available or already satisfied"
+    log_success "Installed exact kernel-devel package: kernel-devel-${base_kernel_version}"
+    
+    # Also install kernel-headers if available (optional, not critical)
+    if dnf install -y "kernel-headers-${base_kernel_version}" 2>/dev/null; then
+        log_success "Installed matching kernel-headers package"
+    else
+        log_info "kernel-headers package not available (not critical for build)"
+    fi
     
     # Verify kernel headers are available for Fedora builds
-    if [[ -d "/usr/src/kernels" ]] && [[ -n "$(ls -A /usr/src/kernels 2>/dev/null)" ]]; then
-        log_success "Kernel headers available in /usr/src/kernels for Fedora builds"
-        log_info "Available kernel versions:"
-        ls -la /usr/src/kernels/
-        
-        # Set up symlink for exact version if needed
-        local exact_dir="/usr/src/kernels/$kernel_version"
-        if [[ ! -d "$exact_dir" ]]; then
-            local available_dir=$(ls -1 /usr/src/kernels/ | head -1)
-            if [[ -n "$available_dir" ]]; then
-                ln -sf "/usr/src/kernels/$available_dir" "$exact_dir" 2>/dev/null || true
-                log_info "Created symlink for kernel version: $kernel_version -> $available_dir"
-            fi
-        fi
+    if [[ -d "/usr/src/kernels/${kernel_version}" ]]; then
+        log_success "Kernel headers available at /usr/src/kernels/${kernel_version}"
+    elif [[ -d "/usr/src/kernels/${base_kernel_version}" ]]; then
+        log_success "Kernel headers available at /usr/src/kernels/${base_kernel_version}"
     else
-        log_warning "Kernel headers directory is empty or missing - this may cause build failures"
+        log_error "Kernel headers directory not found for ${kernel_version}"
+        log_error "Available kernel versions:"
+        ls -la /usr/src/kernels/ 2>/dev/null || echo "No kernels found"
+        return 1
     fi
 }
 
