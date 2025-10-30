@@ -123,13 +123,7 @@ file driver/%{kmod_name}.ko | grep -q "kernel module"
 }
 
 %changelog
-* Wed Oct 29 2025 maccel-rpm-builder <noreply@github.com> - 1.0.0-1
-- Initial RPM package for maccel kernel module
-- Native Fedora kernel build system integration
-- Proper Fedora filesystem layout and module loading
-- Systemd integration with modules-load configuration
-- Automatic module dependency management with depmod
-- Modprobe configuration for seamless module loading
-- Support for specific kernel version targeting
-- Architecture detection and proper dependency handling
+# Changelog will be generated dynamically during build
+* Thu Jan 01 1970 maccel-rpm-builder <noreply@github.com> - 0.0.0-0
+- Placeholder entry - actual changelog generated at build time
 
