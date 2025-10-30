@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version (e.g., 6.11.5-300.fc41.x86_64)'
+        description: 'Kernel version (e.g., 6.11.5-300.fc42.x86_64)'
         required: true
         type: string
       fedora_version:
-        description: 'Fedora version (e.g., 41)'
+        description: 'Fedora version (e.g., 42)'
         required: true
         type: string
       force_rebuild:
@@ -20,8 +20,9 @@ on:
         default: false
 
 env:
+  DEFAULT_FEDORA_VERSION: '42'
   KERNEL_VERSION: ${{ github.event.client_payload.kernel_version || inputs.kernel_version }}
-  FEDORA_VERSION: ${{ github.event.client_payload.fedora_version || inputs.fedora_version }}
+  FEDORA_VERSION: ${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
   TRIGGER_REPO: ${{ github.event.client_payload.trigger_repo || 'manual' }}
   FORCE_REBUILD: ${{ github.event.client_payload.force_rebuild || inputs.force_rebuild || false }}
   # Container-specific environment variables
@@ -36,7 +37,7 @@ jobs:
   validate-and-check:
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
       options: --privileged --user root
       volumes:
         - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -152,7 +153,7 @@ jobs:
     if: needs.validate-and-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
       options: --privileged --user root --tmpfs /tmp --tmpfs /var/tmp
       volumes:
         - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -267,7 +268,7 @@ jobs:
     if: needs.validate-and-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
       options: --privileged --user root
     permissions:
       contents: write  # Required for creating releases
@@ -628,7 +629,7 @@ jobs:
     if: needs.validate-and-check.outputs.should_build == 'false'
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
       options: --privileged --user root
     steps:
       - name: Checkout repository
@@ -662,7 +663,7 @@ jobs:
     if: always() && (failure() || cancelled())
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
+      image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
       options: --privileged --user root
     steps:
       - name: Checkout repository
