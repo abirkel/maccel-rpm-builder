@@ -305,10 +305,11 @@ build_kmod_package() {
     # Set environment variables for kernel module build
     export KDIR="$kernel_headers_dir/$kernel_version"
     if [[ ! -d "$KDIR" ]]; then
-        # Try to find the closest matching kernel headers
-        local available_kernel=$(ls -1 $kernel_headers_dir | head -1)
-        log_warning "Exact kernel headers not found, using: $available_kernel"
-        export KDIR="$kernel_headers_dir/$available_kernel"
+        log_error "Exact kernel headers not found: $KDIR"
+        log_error "Kernel module build requires exact version match"
+        log_error "Available kernel versions:"
+        ls -la "$kernel_headers_dir" || true
+        return 1
     fi
     
     if rpmbuild -ba "$RPMBUILD_ROOT/SPECS/kmod-maccel.spec"; then
@@ -409,38 +410,26 @@ copy_built_packages() {
     fi
     
     # Copy kmod-maccel package
-    if [[ -f "$rpm_arch_dir/$kmod_filename" ]]; then
-        cp "$rpm_arch_dir/$kmod_filename" "$output_dir/"
-        log_success "Copied kmod-maccel package: $kmod_filename"
-    else
-        # Try to find any kmod-maccel package with different naming
-        local found_kmod=$(find "$rpm_arch_dir" -name "kmod-maccel-*.rpm" 2>/dev/null | head -1)
-        if [[ -n "$found_kmod" ]]; then
-            cp "$found_kmod" "$output_dir/"
-            kmod_filename=$(basename "$found_kmod")
-            log_success "Copied kmod-maccel package (alternative naming): $kmod_filename"
-        else
-            log_error "kmod-maccel package not found in: $rpm_arch_dir"
-            return 1
-        fi
+    if [[ ! -f "$rpm_arch_dir/$kmod_filename" ]]; then
+        log_error "Expected kmod-maccel package not found: $rpm_arch_dir/$kmod_filename"
+        log_error "Available packages:"
+        ls -la "$rpm_arch_dir" || true
+        return 1
     fi
     
+    cp "$rpm_arch_dir/$kmod_filename" "$output_dir/"
+    log_success "Copied kmod-maccel package: $kmod_filename"
+    
     # Copy maccel package
-    if [[ -f "$rpm_arch_dir/$maccel_filename" ]]; then
-        cp "$rpm_arch_dir/$maccel_filename" "$output_dir/"
-        log_success "Copied maccel package: $maccel_filename"
-    else
-        # Try to find any maccel package with different naming
-        local found_maccel=$(find "$rpm_arch_dir" -name "maccel-*.rpm" ! -name "kmod-maccel-*.rpm" 2>/dev/null | head -1)
-        if [[ -n "$found_maccel" ]]; then
-            cp "$found_maccel" "$output_dir/"
-            maccel_filename=$(basename "$found_maccel")
-            log_success "Copied maccel package (alternative naming): $maccel_filename"
-        else
-            log_error "maccel package not found in: $rpm_arch_dir"
-            return 1
-        fi
+    if [[ ! -f "$rpm_arch_dir/$maccel_filename" ]]; then
+        log_error "Expected maccel package not found: $rpm_arch_dir/$maccel_filename"
+        log_error "Available packages:"
+        ls -la "$rpm_arch_dir" || true
+        return 1
     fi
+    
+    cp "$rpm_arch_dir/$maccel_filename" "$output_dir/"
+    log_success "Copied maccel package: $maccel_filename"
     
     # Generate checksums for Fedora packages
     cd "$output_dir"
