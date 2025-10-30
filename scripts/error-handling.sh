@@ -2,6 +2,33 @@
 
 # Comprehensive Error Handling Library for maccel RPM Builder
 # This script provides centralized error handling, validation, and monitoring functions
+#
+# USAGE:
+#   source ./scripts/error-handling.sh
+#   
+#   # Logging functions
+#   log_info "Starting process"
+#   log_warning "Non-critical issue"
+#   log_error "Error occurred"
+#   log_critical "Fatal error"
+#   
+#   # GitHub API retry wrapper
+#   gh_retry api repos/owner/repo/releases/latest
+#   gh_retry release view v1.0.0
+#   
+#   # Input validation
+#   validate_kernel_version "6.11.5-300.fc42.x86_64"
+#   validate_maccel_source_access
+#
+# KEY FUNCTIONS:
+#   - log_info, log_warning, log_error, log_critical: Structured logging
+#   - gh_retry: GitHub API calls with exponential backoff
+#   - validate_kernel_version: Validate kernel version format
+#   - validate_maccel_source_access: Check maccel repository accessibility
+#
+# ENVIRONMENT VARIABLES:
+#   - GH_RETRY_ATTEMPTS: Number of retry attempts for gh_retry (default: 3)
+#   - GH_RETRY_DELAY: Initial delay between retries in seconds (default: 2)
 
 set -euo pipefail
 

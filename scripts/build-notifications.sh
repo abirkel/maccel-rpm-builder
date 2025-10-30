@@ -2,6 +2,29 @@
 
 # Build Status Notification System for maccel RPM Builder
 # This script provides comprehensive build status reporting and notifications
+#
+# USAGE:
+#   source ./scripts/build-notifications.sh
+#   init_notification_system "build-id" "/tmp"
+#   
+#   # Report build success
+#   ./scripts/build-notifications.sh success \
+#     "release-tag" "release-url" '{"packages":[...]}' '{"metadata":...}'
+#   
+#   # Report build failure
+#   ./scripts/build-notifications.sh failure \
+#     "ERROR_TYPE" "Error message" "Details" "Troubleshooting"
+#   
+#   # Report existing packages
+#   ./scripts/build-notifications.sh existing \
+#     "release-tag" "release-url" '{"package_info":...}'
+#
+# KEY FUNCTIONS:
+#   - init_notification_system: Initialize notification tracking
+#   - report_build_success: Generate success notification with package URLs
+#   - report_build_failure: Generate failure notification with error details
+#   - report_existing_packages: Report when build is skipped
+#   - generate_workflow_summary: Create GitHub Actions workflow summary
 
 set -euo pipefail
 
