@@ -69,9 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
-      options: --privileged --user root
-      volumes:
-        - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      options: --user root
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
       maccel_version: ${{ steps.version.outputs.maccel_version }}
@@ -312,7 +310,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
-      options: --privileged --user root
+      options: --user root
     permissions:
       contents: write  # Required for creating releases
       id-token: write  # Required for Sigstore verification
@@ -673,7 +671,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
-      options: --privileged --user root
+      options: --user root
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -707,7 +705,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
-      options: --privileged --user root
+      options: --user root
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
