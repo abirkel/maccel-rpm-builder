@@ -34,7 +34,38 @@ env:
   LC_ALL: C.UTF-8
 
 jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate input formats
+        run: |
+          echo "Validating inputs..."
+          
+          # Validate kernel version format
+          if [[ ! "${{ env.KERNEL_VERSION }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.fc[0-9]+\.(x86_64|aarch64)$ ]]; then
+            echo "ERROR: Invalid kernel version format: ${{ env.KERNEL_VERSION }}"
+            echo "Expected format: X.Y.Z-REL.fcN.ARCH (e.g., 6.11.5-300.fc42.x86_64)"
+            exit 1
+          fi
+          
+          # Validate Fedora version is numeric and in reasonable range
+          if [[ ! "${{ env.FEDORA_VERSION }}" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: Invalid Fedora version: ${{ env.FEDORA_VERSION }}"
+            echo "Expected: numeric value (e.g., 42)"
+            exit 1
+          fi
+          
+          if [[ "${{ env.FEDORA_VERSION }}" -lt 35 || "${{ env.FEDORA_VERSION }}" -gt 50 ]]; then
+            echo "WARNING: Unusual Fedora version: ${{ env.FEDORA_VERSION }}"
+            echo "Expected range: 35-50"
+          fi
+          
+          echo "Input validation passed!"
+          echo "Kernel version: ${{ env.KERNEL_VERSION }}"
+          echo "Fedora version: ${{ env.FEDORA_VERSION }}"
+
   validate-and-check:
+    needs: validate-inputs
     runs-on: ubuntu-latest
     container:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '42' }}
