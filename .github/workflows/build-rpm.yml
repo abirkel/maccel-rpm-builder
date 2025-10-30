@@ -268,6 +268,18 @@ jobs:
           
           log_info "Package build completed successfully" "package=${{ matrix.package }}"
 
+      - name: Validate built packages with rpmlint
+        run: |
+          echo "Validating built RPM packages with rpmlint..."
+          if [ -d "packages" ]; then
+            for rpm in packages/*.rpm; do
+              if [ -f "$rpm" ]; then
+                echo "Validating: $rpm"
+                rpmlint "$rpm" || true  # Report issues but don't fail build
+              fi
+            done
+          fi
+
       - name: Sign and verify packages
         run: |
           echo "Running package signing and verification process..."
