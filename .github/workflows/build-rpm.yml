@@ -46,32 +46,13 @@ jobs:
       existing_release: ${{ steps.check.outputs.existing_release }}
       package_info: ${{ steps.check.outputs.package_info }}
     steps:
-      - name: Setup container environment
-        run: |
-          # Optimize dnf for faster package installation
-          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
-          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
-          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
-          
-          # Install essential packages for GitHub Actions and our scripts
-          dnf update -y
-          dnf install -y git curl jq wget findutils which
-          
-          # Install GitHub CLI
-          # Install GitHub CLI using alternative method for Fedora 41
-          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
-          dnf install -y gh
-          
-          # Set up Git configuration for container
-          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Make scripts executable
+      - name: Setup container environment
         run: |
-          chmod +x scripts/*.sh
-          ls -la scripts/
+          chmod +x scripts/setup-container.sh
+          ./scripts/setup-container.sh minimal
 
       - name: Validate kernel version format
         run: |
@@ -185,49 +166,13 @@ jobs:
         package: [kmod-maccel, maccel]
       fail-fast: false  # Continue building other packages if one fails
     steps:
-      - name: Setup container environment
-        run: |
-          # Optimize dnf for faster package installation
-          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
-          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
-          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
-          
-          # Install essential packages for GitHub Actions and build tools
-          dnf update -y
-          dnf install -y git curl jq wget findutils which rpm-build rpmdevtools rpmlint
-          
-          # Install build dependencies for maccel
-          dnf install -y gcc gcc-c++ make rust cargo pkg-config elfutils-libelf-devel udev kmod
-          
-          # Install kernel-devel for the specific kernel version if available
-          # This will be handled by the build scripts for the exact version needed
-          dnf install -y kernel-devel || echo "Generic kernel-devel installation failed, will be handled by build scripts"
-          
-          # Install GitHub CLI
-          # Install GitHub CLI using alternative method for Fedora 41
-          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
-          dnf install -y gh
-          
-          # Install Sigstore cosign for package signing
-          curl -sLO https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
-          chmod +x cosign-linux-amd64
-          mv cosign-linux-amd64 /usr/local/bin/cosign
-          
-          # Set up Git configuration for container
-          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
-          
-          # Set up RPM build environment using native Fedora tools
-          rpmdev-setuptree
-          
-          # Verify Rust toolchain
-          rustc --version
-          cargo --version
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
+      - name: Setup container environment
+        run: |
+          chmod +x scripts/setup-container.sh
+          ./scripts/setup-container.sh full
 
       - name: Set up build environment
         run: |
@@ -332,30 +277,13 @@ jobs:
       release_url: ${{ steps.release.outputs.release_url }}
       package_urls: ${{ steps.release.outputs.package_urls }}
     steps:
-      - name: Setup container environment
-        run: |
-          # Optimize dnf for faster package installation
-          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
-          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
-          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
-          
-          # Install essential packages for GitHub Actions
-          dnf update -y
-          dnf install -y git curl jq wget findutils which
-          
-          # Install GitHub CLI
-          # Install GitHub CLI using alternative method for Fedora 41
-          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
-          dnf install -y gh
-          
-          # Set up Git configuration for container
-          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
+      - name: Setup container environment
+        run: |
+          chmod +x scripts/setup-container.sh
+          ./scripts/setup-container.sh minimal
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -703,30 +631,13 @@ jobs:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
       options: --privileged --user root
     steps:
-      - name: Setup container environment
-        run: |
-          # Optimize dnf for faster package installation
-          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
-          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
-          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
-          
-          # Install essential packages for GitHub Actions
-          dnf update -y
-          dnf install -y git curl jq wget findutils which
-          
-          # Install GitHub CLI
-          # Install GitHub CLI using alternative method for Fedora 41
-          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
-          dnf install -y gh
-          
-          # Set up Git configuration for container
-          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
+      - name: Setup container environment
+        run: |
+          chmod +x scripts/setup-container.sh
+          ./scripts/setup-container.sh minimal
 
       - name: Report existing packages
         run: |
@@ -754,30 +665,13 @@ jobs:
       image: fedora:${{ github.event.client_payload.fedora_version || inputs.fedora_version || '41' }}
       options: --privileged --user root
     steps:
-      - name: Setup container environment
-        run: |
-          # Optimize dnf for faster package installation
-          echo 'fastestmirror=1' >> /etc/dnf/dnf.conf
-          echo 'max_parallel_downloads=10' >> /etc/dnf/dnf.conf
-          echo 'deltarpm=0' >> /etc/dnf/dnf.conf
-          
-          # Install essential packages for GitHub Actions
-          dnf update -y
-          dnf install -y git curl jq wget findutils which
-          
-          # Install GitHub CLI
-          # Install GitHub CLI using alternative method for Fedora 41
-          curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | tee /etc/yum.repos.d/gh-cli.repo
-          dnf install -y gh
-          
-          # Set up Git configuration for container
-          git config --global --add safe.directory /__w/$(basename $GITHUB_REPOSITORY)/$(basename $GITHUB_REPOSITORY)
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
+      - name: Setup container environment
+        run: |
+          chmod +x scripts/setup-container.sh
+          ./scripts/setup-container.sh minimal
 
       - name: Report build failure
         run: |
