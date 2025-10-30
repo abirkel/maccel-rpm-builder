@@ -214,17 +214,6 @@ This project follows Fedora packaging guidelines and uses:
 - rpmlint for spec file validation
 - Conventional commits for clear history
 
-## Architecture
-
-Built for efficiency and reliability:
-
-- **Fedora containers**: Clean, reproducible build environment
-- **Fail-fast validation**: Input validation before expensive operations
-- **Proper error handling**: Structured logging and error reporting
-- **No flawed fallbacks**: Exact version matching, no "close enough" logic
-- **Sigstore signing**: Transparent, keyless package signing
-- **GitHub OIDC**: Secure authentication without stored secrets
-
 ## License
 
 This project is licensed under the same terms as the upstream [maccel project](https://github.com/Gnarus-G/maccel).

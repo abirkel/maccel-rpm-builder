@@ -88,7 +88,7 @@ jobs:
         run: |
           # Source error handling library
           source ./scripts/error-handling.sh
-          setup_error_handling "validate-kernel" "/tmp"
+          init_error_handling "/tmp" "validate-kernel"
           
           # Validate kernel version with comprehensive error handling
           if ! validate_kernel_version "$KERNEL_VERSION"; then
@@ -103,7 +103,7 @@ jobs:
         run: |
           # Source error handling library
           source ./scripts/error-handling.sh
-          setup_error_handling "detect-version" "/tmp"
+          init_error_handling "/tmp" "detect-version"
           
           log_info "Starting maccel version detection"
           
@@ -136,7 +136,7 @@ jobs:
         run: |
           # Source error handling library
           source ./scripts/error-handling.sh
-          setup_error_handling "check-packages" "/tmp"
+          init_error_handling "/tmp" "check-packages"
           
           log_info "Starting package existence check" "kernel=$KERNEL_VERSION, maccel=${{ steps.version.outputs.maccel_version }}, force_rebuild=$FORCE_REBUILD"
           
@@ -220,7 +220,7 @@ jobs:
         run: |
           # Source error handling library
           source ./scripts/error-handling.sh
-          setup_error_handling "setup-build-${{ matrix.package }}" "./packages"
+          init_error_handling "./packages" "setup-build-${{ matrix.package }}"
           
           log_info "Setting up build environment" "package=${{ matrix.package }}, kernel=$KERNEL_VERSION, fedora=$FEDORA_VERSION"
           
@@ -242,7 +242,7 @@ jobs:
         run: |
           # Source error handling library
           source ./scripts/error-handling.sh
-          setup_error_handling "build-${{ matrix.package }}" "./packages"
+          init_error_handling "./packages" "build-${{ matrix.package }}"
           
           log_info "Starting package build" "package=${{ matrix.package }}, kernel=$KERNEL_VERSION, maccel=${{ needs.validate-and-check.outputs.maccel_version }}"
           

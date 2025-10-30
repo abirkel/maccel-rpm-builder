@@ -169,6 +169,11 @@ log_info() {
     log_message "$ERROR_LEVEL_INFO" "$1" "${2:-}"
 }
 
+log_success() {
+    # Success is just info level with green color
+    log_message "$ERROR_LEVEL_INFO" "$1" "${2:-}"
+}
+
 log_warning() {
     log_message "$ERROR_LEVEL_WARNING" "$1" "${2:-}"
 }

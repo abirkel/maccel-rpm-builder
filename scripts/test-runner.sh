@@ -346,22 +346,32 @@ wait_for_workflow() {
     local timeout="$2"
     local start_time=$(date +%s)
     
+    log_info "Waiting for workflow $workflow_id to complete (timeout: ${timeout}s)..."
+    
     while true; do
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
         
         if [[ $elapsed -gt $timeout ]]; then
-            return 1
+            log_error "Workflow timed out after ${timeout}s"
+            return 2  # Return 2 for timeout
         fi
         
         local status=$(gh run view "$workflow_id" --json status --jq '.status' 2>/dev/null || echo "unknown")
         local conclusion=$(gh run view "$workflow_id" --json conclusion --jq '.conclusion' 2>/dev/null || echo "null")
         
+        # Log progress every 2 minutes
+        if [[ $((elapsed % 120)) -eq 0 && $elapsed -gt 0 ]]; then
+            log_info "Still waiting... (${elapsed}s elapsed, status: $status)"
+        fi
+        
         case "$status" in
             "completed")
                 if [[ "$conclusion" == "success" ]]; then
+                    log_success "Workflow completed successfully in ${elapsed}s"
                     return 0
                 else
+                    log_error "Workflow failed with conclusion: $conclusion (${elapsed}s)"
                     return 1
                 fi
                 ;;
@@ -369,6 +379,7 @@ wait_for_workflow() {
                 sleep $POLL_INTERVAL
                 ;;
             *)
+                log_error "Workflow has unexpected status: $status"
                 return 1
                 ;;
         esac
@@ -401,12 +412,20 @@ test_end_to_end_workflow() {
     record_test_result "E2E: Trigger workflow" "PASS" "Workflow ID: $workflow_id"
     
     # Wait for completion
-    if ! wait_for_workflow "$workflow_id" "$WORKFLOW_TIMEOUT"; then
-        record_test_result "E2E: Workflow completion" "FAIL" "Workflow did not complete successfully"
+    wait_for_workflow "$workflow_id" "$WORKFLOW_TIMEOUT"
+    local wait_result=$?
+    
+    if [[ $wait_result -eq 0 ]]; then
+        record_test_result "E2E: Workflow completion" "PASS" "Workflow completed successfully"
+    elif [[ $wait_result -eq 2 ]]; then
+        record_test_result "E2E: Workflow completion" "FAIL" "Workflow timed out after ${WORKFLOW_TIMEOUT}s"
+        log_warning "View workflow logs: gh run view $workflow_id --log"
+        return 1
+    else
+        record_test_result "E2E: Workflow completion" "FAIL" "Workflow failed - check logs for details"
+        log_warning "View workflow logs: gh run view $workflow_id --log-failed"
         return 1
     fi
-    
-    record_test_result "E2E: Workflow completion" "PASS" "Workflow completed successfully"
     
     # Validate release creation
     local release_tag="kernel-${kernel_version}-maccel-${maccel_version}"
@@ -448,8 +467,10 @@ test_caching_efficiency() {
         return 1
     fi
     
-    if ! wait_for_workflow "$workflow_id1" "$WORKFLOW_TIMEOUT"; then
-        record_test_result "Caching: First build completion" "FAIL"
+    wait_for_workflow "$workflow_id1" "$WORKFLOW_TIMEOUT"
+    local wait_result1=$?
+    if [[ $wait_result1 -ne 0 ]]; then
+        record_test_result "Caching: First build completion" "FAIL" "Workflow failed or timed out"
         return 1
     fi
     
@@ -462,8 +483,10 @@ test_caching_efficiency() {
         return 1
     fi
     
-    if ! wait_for_workflow "$workflow_id2" "$WORKFLOW_TIMEOUT"; then
-        record_test_result "Caching: Second build completion" "FAIL"
+    wait_for_workflow "$workflow_id2" "$WORKFLOW_TIMEOUT"
+    local wait_result2=$?
+    if [[ $wait_result2 -ne 0 ]]; then
+        record_test_result "Caching: Second build completion" "FAIL" "Workflow failed or timed out"
         return 1
     fi
     
@@ -545,11 +568,13 @@ run_cross_version_tests() {
         # Simplified cross-version test (just trigger and validate)
         local workflow_id
         if workflow_id=$(trigger_dispatch_and_get_workflow "$kernel_version" "${fedora_version#fc}" "true"); then
-            if wait_for_workflow "$workflow_id" "$WORKFLOW_TIMEOUT"; then
+            wait_for_workflow "$workflow_id" "$WORKFLOW_TIMEOUT"
+            local wait_result=$?
+            if [[ $wait_result -eq 0 ]]; then
                 success_count=$((success_count + 1))
                 record_test_result "Cross-version: $fedora_version" "PASS"
             else
-                record_test_result "Cross-version: $fedora_version" "FAIL" "Workflow failed"
+                record_test_result "Cross-version: $fedora_version" "FAIL" "Workflow failed or timed out"
             fi
         else
             record_test_result "Cross-version: $fedora_version" "FAIL" "Could not trigger workflow"
