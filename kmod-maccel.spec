@@ -124,6 +124,6 @@ file driver/%{kmod_name}.ko | grep -q "kernel module"
 
 %changelog
 # Changelog will be generated dynamically during build
-* Thu Jan 01 1970 maccel-rpm-builder <noreply@github.com> - 0.0.0-0
+* Thu Oct 30 2025 maccel-rpm-builder <noreply@github.com> - 0.0.0-0
 - Placeholder entry - actual changelog generated at build time
 
