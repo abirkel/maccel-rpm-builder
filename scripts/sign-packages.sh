@@ -43,12 +43,12 @@ install_cosign() {
 
 # Function to check if signing is available
 check_signing_availability() {
-    log_info "Checking Sigstore keyless signing availability..."
+    log_info "Checking Sigstore signing availability..."
     
     # Check if we're running in GitHub Actions
     if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
-        log_warning "Not running in GitHub Actions - Sigstore keyless signing not available"
-        log_info "Sigstore keyless signing requires OIDC token from GitHub Actions"
+        log_warning "Not running in GitHub Actions - Sigstore signing not available"
+        log_info "Sigstore signing requires OIDC token from GitHub Actions"
         return 1
     fi
     
@@ -64,7 +64,7 @@ check_signing_availability() {
         return 1
     fi
     
-    log_success "Sigstore keyless signing is available"
+    log_success "Sigstore signing is available"
     return 0
 }
 
@@ -72,7 +72,7 @@ check_signing_availability() {
 sign_packages_with_sigstore() {
     local package_dir="${1:-$PWD}"
     
-    log_info "Signing RPM packages with Sigstore keyless signing..."
+    log_info "Signing RPM packages with Sigstore signing..."
     
     cd "$package_dir"
     
@@ -106,7 +106,7 @@ sign_packages_with_sigstore() {
         fi
     done
     
-    log_success "All packages signed with Sigstore keyless signing"
+    log_success "All packages signed with Sigstore signing"
     return 0
 }
 
@@ -116,7 +116,7 @@ sign_packages() {
     
     log_info "Signing RPM packages in directory: $package_dir"
     
-    # Use Sigstore keyless signing
+    # Use Sigstore signing
     sign_packages_with_sigstore "$package_dir"
 }
 
@@ -223,7 +223,7 @@ verify_packages() {
     cat > verification-report.txt << EOF
 RPM Package Verification Report
 Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-Verification Method: Sigstore keyless signing + Traditional RPM
+Verification Method: Sigstore signing + Traditional RPM
 
 Packages verified: ${#rpm_files[@]}
 
@@ -233,7 +233,7 @@ $(printf '%s\n' "${verification_results[@]}")
 Status: $(if $all_verified; then echo "All packages verified successfully"; else echo "Some packages failed verification"; fi)
 
 Sigstore Information:
-- Signatures are keyless and use GitHub OIDC identity
+- Signatures are use GitHub OIDC identity
 - Certificates are stored in transparency log (Rekor)
 - No key management required for verification
 EOF
@@ -262,7 +262,7 @@ create_sigstore_info() {
 Sigstore Keyless Signing Information
 Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-Signing Method: Sigstore keyless signing with GitHub OIDC
+Signing Method: Sigstore signing with GitHub OIDC
 Identity: GitHub Actions (${GITHUB_REPOSITORY:-unknown}@${GITHUB_REF:-unknown})
 Transparency Log: Rekor (https://rekor.sigstore.dev)
 
@@ -343,7 +343,7 @@ rpm -qip package-name.rpm
 
 ### Sigstore Keyless Signatures
 
-Packages are signed using Sigstore keyless signing with GitHub OIDC identity.
+Packages are signed using Sigstore signing with GitHub OIDC identity.
 
 1. Install cosign (Sigstore CLI):
    ```bash
@@ -492,7 +492,7 @@ main() {
                 create_sigstore_info "$package_dir"
                 generate_signing_summary "$package_dir" true
             else
-                log_warning "Sigstore keyless signing not available - skipping signature generation"
+                log_warning "Sigstore signing not available - skipping signature generation"
                 generate_signing_summary "$package_dir" false
             fi
             ;;
@@ -513,7 +513,7 @@ main() {
             
             # Attempt to sign packages if possible
             if check_signing_availability; then
-                log_info "Sigstore keyless signing is available - proceeding with full signing process"
+                log_info "Sigstore signing is available - proceeding with full signing process"
                 sign_packages "$package_dir"
                 verify_packages "$package_dir"
                 create_sigstore_info "$package_dir"
@@ -530,13 +530,13 @@ main() {
             echo ""
             echo "Actions:"
             echo "  check"
-            echo "    Check if Sigstore keyless signing is available"
+            echo "    Check if Sigstore signing is available"
             echo ""
             echo "  install-cosign"
             echo "    Install Sigstore cosign CLI tool"
             echo ""
             echo "  sign [package_dir]"
-            echo "    Sign all RPM packages using Sigstore keyless signing"
+            echo "    Sign all RPM packages using Sigstore signing"
             echo ""
             echo "  verify [package_dir]"
             echo "    Verify Sigstore signatures of all RPM packages"

@@ -200,7 +200,7 @@ You can manually check for existing packages using the detection script:
 
 ## Package Verification
 
-All packages are signed using **Sigstore keyless signing** for enhanced security and transparency.
+All packages are signed using **Sigstore signing** for enhanced security and transparency.
 
 ### Quick Verification
 

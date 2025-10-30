@@ -13,7 +13,7 @@ The maccel-rpm-builder produces two RPM packages:
 
 ### Sigstore Keyless Verification (Recommended)
 
-All packages are signed using Sigstore keyless signing for enhanced security and transparency.
+All packages are signed using Sigstore signing for enhanced security and transparency.
 
 #### Install Cosign
 
