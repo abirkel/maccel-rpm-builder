@@ -358,7 +358,7 @@ wait_for_workflow() {
         fi
         
         local status=$(gh run view "$workflow_id" --json status --jq '.status' 2>/dev/null || echo "unknown")
-        local conclusion=$(gh run view "$workflow_id" --json conclusion --jq '.conclusion' 2>/dev/null || echo "null")
+        local conclusion=$(gh run view "$workflow_id" --json conclusion --jq '.conclusion // "null"' 2>/dev/null || echo "null")
         
         # Log progress every 2 minutes
         if [[ $((elapsed % 120)) -eq 0 && $elapsed -gt 0 ]]; then
