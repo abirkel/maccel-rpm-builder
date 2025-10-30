@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Source error handling library for gh_retry function
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" 2>/dev/null || true
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -55,7 +59,7 @@ get_version_from_git_tags() {
     
     # Try to get latest release tag using GitHub API
     if command -v gh >/dev/null 2>&1; then
-        version=$(gh api repos/Gnarus-G/maccel/releases/latest --jq '.tag_name' 2>/dev/null || true)
+        version=$(gh_retry api repos/Gnarus-G/maccel/releases/latest --jq '.tag_name' 2>/dev/null || true)
     fi
     
     # Fallback to curl if gh is not available

@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Source error handling library for gh_retry function
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" 2>/dev/null || true
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,7 +39,7 @@ check_release_exists() {
     
     log_info "Checking if release exists: $release_tag"
     
-    if gh release view "$release_tag" >/dev/null 2>&1; then
+    if gh_retry release view "$release_tag" >/dev/null 2>&1; then
         log_success "Release found: $release_tag"
         return 0
     else
@@ -52,7 +56,7 @@ get_release_metadata() {
     
     # Get release information as JSON
     local release_info=""
-    release_info=$(gh release view "$release_tag" --json assets,body,createdAt,tagName 2>/dev/null || echo "")
+    release_info=$(gh_retry release view "$release_tag" --json assets,body,createdAt,tagName 2>/dev/null || echo "")
     
     if [[ -n "$release_info" ]]; then
         echo "$release_info"
@@ -71,7 +75,7 @@ get_release_source_commit() {
     
     # Try to get build-info.json from release assets
     local build_info=""
-    build_info=$(gh release download "$release_tag" --pattern "build-info.json" --output - 2>/dev/null || echo "")
+    build_info=$(gh_retry release download "$release_tag" --pattern "build-info.json" --output - 2>/dev/null || echo "")
     
     if [[ -n "$build_info" ]]; then
         local commit_hash=""
@@ -86,7 +90,7 @@ get_release_source_commit() {
     
     # Fallback: try to extract from release body
     local release_body=""
-    release_body=$(gh release view "$release_tag" --json body --jq '.body' 2>/dev/null || echo "")
+    release_body=$(gh_retry release view "$release_tag" --json body --jq '.body' 2>/dev/null || echo "")
     
     if [[ -n "$release_body" ]]; then
         local commit_hash=""
@@ -146,7 +150,7 @@ get_package_urls() {
     
     # Get release assets
     local assets=""
-    assets=$(gh release view "$release_tag" --json assets --jq '.assets[] | select(.name | endswith(".rpm")) | {name: .name, url: .browserDownloadUrl}' 2>/dev/null || echo "")
+    assets=$(gh_retry release view "$release_tag" --json assets --jq '.assets[] | select(.name | endswith(".rpm")) | {name: .name, url: .browserDownloadUrl}' 2>/dev/null || echo "")
     
     if [[ -n "$assets" ]]; then
         echo "$assets"
@@ -271,7 +275,7 @@ list_kernel_releases() {
     
     # Get all releases and filter by kernel version pattern
     local releases=""
-    releases=$(gh release list --limit 100 --json tagName,createdAt,url | \
+    releases=$(gh_retry release list --limit 100 --json tagName,createdAt,url | \
               jq --arg pattern "$kernel_version_pattern" \
               '.[] | select(.tagName | startswith("kernel-" + $pattern)) | {tag: .tagName, created: .createdAt, url: .url}' 2>/dev/null || echo "")
     

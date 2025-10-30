@@ -27,6 +27,36 @@ declare -g ERROR_LOG_FILE=""
 declare -g BUILD_START_TIME=""
 declare -g TIMEOUT_DURATION=3600  # 1 hour default timeout
 
+# GitHub CLI retry wrapper
+# Provides automatic retry with exponential backoff for gh commands
+gh_retry() {
+    local max_attempts="${GH_RETRY_ATTEMPTS:-3}"
+    local base_delay="${GH_RETRY_DELAY:-2}"
+    local max_delay=60
+    local attempt=1
+    
+    while (( attempt <= max_attempts )); do
+        if gh "$@"; then
+            return 0
+        fi
+        
+        if (( attempt < max_attempts )); then
+            local delay=$(( base_delay * (2 ** (attempt - 1)) ))
+            delay=$(( delay > max_delay ? max_delay : delay ))
+            echo "GitHub API call failed (attempt $attempt/$max_attempts). Retrying in ${delay}s..." >&2
+            sleep $delay
+        fi
+        
+        attempt=$(( attempt + 1 ))
+    done
+    
+    echo "GitHub API call failed after $max_attempts attempts" >&2
+    return 1
+}
+
+# Export gh_retry for use in other scripts
+export -f gh_retry
+
 # Initialize error handling system
 init_error_handling() {
     local log_dir="${1:-/tmp}"
