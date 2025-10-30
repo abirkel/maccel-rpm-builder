@@ -153,36 +153,8 @@ validate_kernel_version() {
         log_warning "Unusual Fedora version detected" "fedora_version=$fedora_part, expected_range=35-50"
     fi
     
-    # Check if kernel-devel package might be available
-    log_info "Checking kernel-devel package availability" "kernel_version=$kernel_version"
-    if ! check_kernel_devel_availability "$kernel_version"; then
-        log_warning "kernel-devel package may not be available" "kernel_version=$kernel_version"
-    fi
-    
     log_info "Kernel version validation passed" "version=$kernel_version"
     return 0
-}
-
-# Check kernel-devel package availability
-check_kernel_devel_availability() {
-    local kernel_version="$1"
-    local base_version=$(echo "$kernel_version" | sed 's/\.[^.]*$//')
-    
-    # Check if we're on a system that uses dnf
-    if command -v dnf >/dev/null 2>&1; then
-        # Try to query package availability (non-blocking, short timeout)
-        if timeout 10 dnf list available "kernel-devel-${base_version}" >/dev/null 2>&1; then
-            log_info "kernel-devel package is available" "version=$base_version"
-            return 0
-        else
-            log_warning "kernel-devel package availability check failed or timed out" "version=$base_version, timeout=10s"
-            return 1
-        fi
-    else
-        # Fallback: assume kernel development packages are available
-        log_info "Kernel development packages assumed to be available"
-        return 0
-    fi
 }
 
 # Maccel source access validation with retry logic
