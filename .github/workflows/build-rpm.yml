@@ -471,11 +471,25 @@ jobs:
             fi
           fi
           
-          # Create comprehensive release notes
+          # Create comprehensive release notes with machine-readable metadata
           cat > release_notes.md << EOF
           # RPM Packages for maccel ${{ needs.validate-and-check.outputs.maccel_version }}
           
           Built for **Kernel ${KERNEL_VERSION}** on **Fedora ${FEDORA_VERSION}**
+          
+          ## 🔧 Build Metadata
+          
+          \`\`\`json
+          {
+            "kernel_version": "${KERNEL_VERSION}",
+            "maccel_version": "${{ needs.validate-and-check.outputs.maccel_version }}",
+            "maccel_commit": "${{ needs.validate-and-check.outputs.source_commit }}",
+            "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "fedora_version": "${FEDORA_VERSION}",
+            "architecture": "${ARCH}",
+            "trigger_repo": "${TRIGGER_REPO}"
+          }
+          \`\`\`
           
           ## 📦 Package Information
           
@@ -490,7 +504,7 @@ jobs:
           - **Maccel Version**: \`${{ needs.validate-and-check.outputs.maccel_version }}\`
           - **Source Commit**: \`${{ needs.validate-and-check.outputs.source_commit }}\`
           - **Build Date**: \`$(date -u +%Y-%m-%d)\`
-          - **Architecture**: \`$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2)\`
+          - **Architecture**: \`${ARCH}\`
           - **Triggered by**: \`${TRIGGER_REPO}\`
           
           ## 📥 Installation
@@ -498,8 +512,8 @@ jobs:
           ### Quick Install
           \`\`\`bash
           # Download both packages
-          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
-          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm
           
           # Install packages
           sudo dnf install ./kmod-maccel-*.rpm ./maccel-*.rpm
@@ -510,8 +524,8 @@ jobs:
           # In your Blue Build recipe
           rpm:
             install:
-              - https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
-              - https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+              - https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm
+              - https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm
           \`\`\`
           
           ## 🔐 Verification
@@ -536,8 +550,8 @@ jobs:
           sudo mv cosign-linux-amd64 /usr/local/bin/cosign
           
           # Download signature and certificate files
-          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm.sig
-          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm.crt
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm.sig
+          wget https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm.crt
           
           # Verify package signature
           cosign verify-blob --signature kmod-maccel-*.rpm.sig --certificate kmod-maccel-*.rpm.crt \\
@@ -579,8 +593,8 @@ jobs:
           
           These URLs are permanent and suitable for automated consumption:
           
-          - **kmod-maccel**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
-          - **maccel**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2).rpm
+          - **kmod-maccel**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/kmod-maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm
+          - **maccel**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/maccel-${{ needs.validate-and-check.outputs.maccel_version }}-1.fc${FEDORA_VERSION}.${ARCH}.rpm
           - **checksums**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/checksums.txt
           - **build-info**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/build-info.json
           - **verification-guide**: https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/PACKAGE_VERIFICATION.md
@@ -635,7 +649,7 @@ jobs:
           echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
           
           # Generate package URLs JSON for output
-          ARCH=$(echo "$KERNEL_VERSION" | grep -oP '\.(x86_64|aarch64)$' | cut -d. -f2)
+          ARCH=${ARCH}
           PACKAGE_URLS=$(cat << EOF
           [
             {
