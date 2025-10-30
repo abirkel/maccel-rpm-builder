@@ -187,7 +187,6 @@ jobs:
       volumes:
         - /sys/fs/cgroup:/sys/fs/cgroup:rw
         - /lib/modules:/lib/modules:ro
-        - /usr/src:/usr/src:ro
     permissions:
       contents: read
       id-token: write  # Required for Sigstore keyless signing
