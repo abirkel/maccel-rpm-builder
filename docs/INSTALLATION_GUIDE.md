@@ -272,8 +272,8 @@ jobs:
       - name: Get package URLs
         id: packages
         run: |
-          # Wait for build and get URLs
-          sleep 300  # Wait for build to complete
+          # Note: Build typically completes in 5-10 minutes
+          # Poll for release or check workflow status before proceeding
           RELEASE_TAG="kernel-${{ steps.kernel.outputs.version }}-maccel-latest"
           echo "kmod_url=https://github.com/USERNAME/maccel-rpm-builder/releases/download/${RELEASE_TAG}/kmod-maccel-latest.rpm" >> $GITHUB_OUTPUT
           echo "maccel_url=https://github.com/USERNAME/maccel-rpm-builder/releases/download/${RELEASE_TAG}/maccel-latest.rpm" >> $GITHUB_OUTPUT

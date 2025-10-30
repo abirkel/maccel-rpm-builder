@@ -85,9 +85,8 @@ jobs:
             --field event_type=build-for-kernel \
             --field client_payload="{\"kernel_version\":\"${{ steps.kernel.outputs.version }}\",\"fedora_version\":\"41\",\"trigger_repo\":\"${{ github.repository }}\"}"
           
-          # Wait for build to complete
-          echo "Waiting for maccel build to complete..."
-          sleep 600  # Wait 10 minutes for build
+          # Note: Build typically completes in 5-10 minutes
+          # Check releases page or use gh CLI to verify completion before proceeding
         env:
           GITHUB_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
           
@@ -597,8 +596,8 @@ echo "=== Test Complete ==="
           --field event_type=build-for-kernel \
           --field client_payload="{\"kernel_version\":\"${KERNEL_VERSION}\",\"fedora_version\":\"41\",\"trigger_repo\":\"${{ github.repository }}\"}"
         
-        # Wait for build
-        sleep 600
+        # Note: Build typically completes in 5-10 minutes
+        # Poll for completion or check releases page
       fi
     done
   env:
