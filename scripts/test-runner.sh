@@ -28,9 +28,9 @@ MAX_RETRIES=3  # Maximum retries for API calls
 
 # Test kernel versions for cross-version compatibility
 declare -A TEST_KERNELS=(
-    ["fc41"]="6.11.5-300.fc41.x86_64"
-    ["fc40"]="6.10.12-200.fc40.x86_64"
-    ["fc39"]="6.8.11-300.fc39.x86_64"
+    ["fc41"]="6.17.4-100.fc41.x86_64"
+    ["fc42"]="6.17.4-200.fc42.x86_64"
+    ["fc43"]="6.17.4-300.fc43.x86_64"
 )
 
 # Test counters
