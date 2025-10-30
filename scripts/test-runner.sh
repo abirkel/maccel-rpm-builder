@@ -357,32 +357,43 @@ wait_for_workflow() {
             return 2  # Return 2 for timeout
         fi
         
-        local status=$(gh run view "$workflow_id" --json status --jq '.status' 2>/dev/null || echo "unknown")
-        local conclusion=$(gh run view "$workflow_id" --json conclusion --jq '.conclusion // "null"' 2>/dev/null || echo "null")
+        # Get workflow info in one call
+        local workflow_info=$(gh run view "$workflow_id" --json status,conclusion 2>/dev/null)
+        
+        if [[ -z "$workflow_info" ]]; then
+            log_warning "Could not fetch workflow info, retrying..."
+            sleep $POLL_INTERVAL
+            continue
+        fi
+        
+        local status=$(echo "$workflow_info" | jq -r '.status // "unknown"')
+        local conclusion=$(echo "$workflow_info" | jq -r '.conclusion // "null"')
         
         # Log progress every 2 minutes
         if [[ $((elapsed % 120)) -eq 0 && $elapsed -gt 0 ]]; then
             log_info "Still waiting... (${elapsed}s elapsed, status: $status)"
         fi
         
-        case "$status" in
-            "completed")
-                if [[ "$conclusion" == "success" ]]; then
-                    log_success "Workflow completed successfully in ${elapsed}s"
-                    return 0
-                else
-                    log_error "Workflow failed with conclusion: $conclusion (${elapsed}s)"
-                    return 1
-                fi
-                ;;
-            "in_progress"|"queued")
-                sleep $POLL_INTERVAL
-                ;;
-            *)
-                log_error "Workflow has unexpected status: $status"
+        # Check if completed
+        if [[ "$status" == "completed" ]]; then
+            if [[ "$conclusion" == "success" ]]; then
+                log_success "Workflow completed successfully in ${elapsed}s"
+                return 0
+            else
+                log_error "Workflow failed with conclusion: $conclusion (${elapsed}s)"
                 return 1
-                ;;
-        esac
+            fi
+        fi
+        
+        # Still running
+        if [[ "$status" == "in_progress" || "$status" == "queued" || "$status" == "waiting" ]]; then
+            sleep $POLL_INTERVAL
+            continue
+        fi
+        
+        # Unknown status
+        log_error "Workflow has unexpected status: $status (conclusion: $conclusion)"
+        return 1
     done
 }
 
