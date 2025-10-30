@@ -206,6 +206,18 @@ jobs:
           chmod +x scripts/setup-container.sh
           ./scripts/setup-container.sh full
 
+      - name: Cache cargo dependencies
+        if: matrix.package == 'maccel'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Set up build environment
         run: |
           # Source error handling library
